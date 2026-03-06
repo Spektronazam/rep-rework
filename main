@@ -1,0 +1,1782 @@
+-- syndrez 2026
+if _G.REPCleanup then pcall(_G.REPCleanup); task.wait(0.3) end
+
+local rs = game:GetService("RunService")
+local plrs = game:GetService("Players")
+local uis = game:GetService("UserInputService")
+local ltg = game:GetService("Lighting")
+local gs = game:GetService("GuiService")
+local ts = game:GetService("TweenService")
+local ws = game:GetService("Workspace")
+local cg = (function() local s, r = pcall(game.GetService, game, "CoreGui"); return s and r end)()
+
+local cam = ws.CurrentCamera
+local lp = plrs.LocalPlayer
+local mouse = lp:GetMouse()
+
+local v2, v3, cf, c3, c3h = Vector2.new, Vector3.new, CFrame.new, Color3.fromRGB, Color3.fromHSV
+local ud2, ud = UDim2.new, UDim.new
+local rad, sin, cos, tan = math.rad, math.sin, math.cos, math.tan
+local abs, floor, ceil, clamp = math.abs, math.floor, math.ceil, math.clamp
+local huge, pi, rng, exp = math.huge, math.pi, math.random, math.exp
+local mn, mx, sqrt, atan2 = math.min, math.max, math.sqrt, math.atan2
+local acos, asin = math.acos, math.asin
+local tk = tick
+local tinsert, tremove, tcreate = table.insert, table.remove, table.create
+local sfmt = string.format
+
+local zv2, zv3, upv3 = v2(0, 0), v3(0, 0, 0), v3(0, 1, 0)
+local grav = v3(0, -196.2, 0)
+
+local _inset = zv2
+pcall(function() _inset = gs:GetGuiInset() end)
+
+local function vps() return cam.ViewportSize end
+local function scrn() local s = vps(); return v2(s.X * .5, s.Y * .5) end
+local function mpos() return v2(mouse.X, mouse.Y) end
+
+local function lerp(a, b, t) return a + (b - a) * t end
+local function damp(c, g, sp, dt) return lerp(c, g, 1 - exp(-sp * dt * 60)) end
+local function sstep(t) return t * t * (3 - 2 * t) end
+local function sstep5(t) return t*t*t*(t*(t*6-15)+10) end
+local function eoc(t) local u = 1-t; return 1 - u*u*u end
+
+local function hpcol(p)
+	p = clamp(p, 0, 1)
+	return p > .5 and Color3.new(clamp(2*(1-p),0,1), 1, 0) or Color3.new(1, clamp(2*p,0,1), 0)
+end
+
+local _cn = {}
+local function hook(conn) if conn then _cn[#_cn+1] = conn end; return conn end
+local function unhookAll()
+	for i = #_cn, 1, -1 do
+		local c = _cn[i]
+		if c and c.Connected then pcall(c.Disconnect, c) end
+		_cn[i] = nil
+	end
+end
+
+local function nuke(d) if d then pcall(function() d.Visible = false; d:Remove() end) end end
+local function kill(inst) if inst then pcall(inst.Destroy, inst) end end
+
+local function mkDraw(kind, props)
+	local s, d = pcall(Drawing.new, kind)
+	if not s or not d then return nil end
+	if props then for k, val in pairs(props) do d[k] = val end end
+	d.Visible = props and props.Visible or false
+	d.ZIndex = props and props.ZIndex or 50
+	return d
+end
+
+local function mkLine(p) return mkDraw("Line", {
+	From=p and p.From or zv2, To=p and p.To or zv2,
+	Color=p and p.Color or Color3.new(1,1,1), Thickness=p and p.Thickness or 1,
+	Transparency=p and p.Transparency or 1, Visible=p and p.Visible or false,
+	ZIndex=p and p.ZIndex or 50
+}) end
+
+local function mkText(p) return mkDraw("Text", {
+	Text=p and p.Text or "", Size=p and p.Size or 14,
+	Font=p and p.Font or Drawing.Fonts.Plex, Position=p and p.Position or zv2,
+	Center=p and p.Center or false, Outline=p and (p.Outline ~= nil and p.Outline or true) or true,
+	Color=p and p.Color or Color3.new(1,1,1), Transparency=p and p.Transparency or 1,
+	Visible=p and p.Visible or false, ZIndex=p and p.ZIndex or 50
+}) end
+
+local function mkRect(p) return mkDraw("Square", {
+	Size=p and p.Size or v2(10,10), Position=p and p.Position or zv2,
+	Color=p and p.Color or Color3.new(1,1,1), Filled=p and p.Filled or false,
+	Thickness=p and p.Thickness or 1, Transparency=p and p.Transparency or 1,
+	Visible=p and p.Visible or false, ZIndex=p and p.ZIndex or 50
+}) end
+
+local function mkCirc(p) return mkDraw("Circle", {
+	Position=p and p.Position or zv2, Radius=p and p.Radius or 10,
+	Color=p and p.Color or Color3.new(1,1,1), Filled=p and p.Filled or false,
+	Thickness=p and p.Thickness or 1, Transparency=p and p.Transparency or 1,
+	NumSides=p and p.NumSides or 64, Visible=p and p.Visible or false,
+	ZIndex=p and p.ZIndex or 50
+}) end
+
+local function mkTri(p) return mkDraw("Triangle", {
+	PointA=p and p.PointA or zv2, PointB=p and p.PointB or zv2, PointC=p and p.PointC or zv2,
+	Color=p and p.Color or Color3.new(1,1,1), Filled=p and p.Filled or false,
+	Thickness=p and p.Thickness or 1, Transparency=p and p.Transparency or 1,
+	Visible=p and p.Visible or false, ZIndex=p and p.ZIndex or 50
+}) end
+
+local function validPlr(p) if not p then return false end; local s,r = pcall(function() return p.Parent ~= nil and plrs:FindFirstChild(p.Name) ~= nil end); return s and r end
+local function validChr(c) return c and c.Parent ~= nil end
+local function getHum(c) return validChr(c) and c:FindFirstChildOfClass("Humanoid") or nil end
+local function getRoot(c) return validChr(c) and (c:FindFirstChild("HumanoidRootPart") or c:FindFirstChild("Torso")) or nil end
+local function getHead(c) return validChr(c) and c:FindFirstChild("Head") or nil end
+local function isR15(c) return validChr(c) and c:FindFirstChild("UpperTorso") ~= nil end
+local function alive(c) local h = getHum(c); return h and h.Health > 0 end
+local function sameTeam(p) return lp.Team and p.Team and lp.Team == p.Team end
+
+local function getWpn(c)
+	if not validChr(c) then return nil end
+	for _, ch in ipairs(c:GetChildren()) do
+		if ch:IsA("Tool") or ch:IsA("HopperBin") then return ch.Name end
+	end
+end
+
+local function plrDist(p)
+	if not p or not p.Character then return huge end
+	local r = getRoot(p.Character)
+	return r and (r.Position - cam.CFrame.Position).Magnitude or huge
+end
+
+local _rp = RaycastParams.new()
+_rp.FilterType = Enum.RaycastFilterType.Exclude
+_rp.IgnoreWater = true
+
+local _los = {}
+local _losTTL = 0.08
+local _losPurge = 0
+local _losProbes = {"Head","UpperTorso","HumanoidRootPart","LowerTorso","LeftUpperArm","RightUpperArm"}
+
+local function checkVis(chr)
+	if not validChr(chr) then return false end
+	local r = getRoot(chr)
+	if not r then return false end
+	local now = tk()
+	local cc = _los[chr]
+	if cc and (now - cc.t) < _losTTL then return cc.r end
+	local fl = {cam}
+	local lc = lp.Character
+	if lc then fl[2] = lc end
+	_rp.FilterDescendantsInstances = fl
+	local hits, tot = 0, 0
+	local org = cam.CFrame.Position
+	local look = cam.CFrame.LookVector
+	for _, pn in ipairs(_losProbes) do
+		local pt = chr:FindFirstChild(pn)
+		if pt and pt:IsA("BasePart") then
+			local dir = pt.Position - org
+			if look:Dot(dir.Unit) < -.1 then continue end
+			tot += 1
+			local rc = ws:Raycast(org, dir, _rp)
+			if not rc or rc.Instance:IsDescendantOf(chr) then hits += 1 end
+		end
+	end
+	local vis = tot > 0 and (hits/tot) >= .25
+	_los[chr] = {r=vis, t=now}
+	return vis
+end
+
+local function purgeLos()
+	local now = tk()
+	if now - _losPurge < 1 then return end
+	_losPurge = now
+	for k, e in pairs(_los) do
+		if (now - e.t) > .4 or not validChr(k) then _los[k] = nil end
+	end
+end
+
+local SKEL15 = {
+	{"Head","UpperTorso"},{"UpperTorso","LowerTorso"},
+	{"UpperTorso","LeftUpperArm"},{"LeftUpperArm","LeftLowerArm"},{"LeftLowerArm","LeftHand"},
+	{"UpperTorso","RightUpperArm"},{"RightUpperArm","RightLowerArm"},{"RightLowerArm","RightHand"},
+	{"LowerTorso","LeftUpperLeg"},{"LeftUpperLeg","LeftLowerLeg"},{"LeftLowerLeg","LeftFoot"},
+	{"LowerTorso","RightUpperLeg"},{"RightUpperLeg","RightLowerLeg"},{"RightLowerLeg","RightFoot"},
+}
+local SKEL6 = {
+	{"Head","Torso"},{"Torso","Left Arm"},{"Torso","Right Arm"},{"Torso","Left Leg"},{"Torso","Right Leg"},
+}
+
+local Cfg = {
+	aim = {
+		on = false, teamChk = true, visChk = false, showFov = true,
+		predVis = true, distChk = true, hlTgt = true, sticky = true,
+		part = "Head", predMode = "Ping", priority = "Crosshair",
+		fov = 200, dynFov = false, dynFovMin = 50,
+		smooth = 0, velFrames = 5,
+		humanize = true, humanStr = 0.4,
+		accelPred = true,
+		gracePeriod = 0.35,
+		adaptSmooth = true,
+		resolver = false,
+		bezier = true, bezierJitter = 0.3,
+		overshoot = true, overshootStr = 0.12,
+		reactionSim = false, reactionMs = 140,
+		flick = true, flickThresh = 25,
+		triggerbot = false, triggerDelay = 40, triggerBurst = false,
+		backtrack = false, backtrackMs = 80,
+		aimCone = false, coneDeg = 0.5,
+		distAdapt = true,
+		switchCooldown = 0.15,
+		multiPoint = true,
+		deadzone = 0.8,
+		mouseMethod = false,
+	},
+	misc = {
+		shake = false, shakeStr = 5,
+		autoAdj = false, aaMode = "Distance",
+		offX = 0, offY = 0, offZ = 0, jumpOff = 2,
+		xhair = false, xhSz = 10, xhGap = 4, xhThk = 1,
+		xhDyn = false, xhDot = false, xhCol = Color3.new(1,1,1),
+	},
+	esp = {
+		on = true, boxes = true, corner = false, names = true,
+		dist = true, hbar = true, htxt = false, tracers = false,
+		tracerOrigin = "Bottom", skel = false, weapon = false,
+		flags = false, oofArrows = false, chams = false,
+		teamChk = true, showTeam = false, visChk = true,
+		range = 1000, boxThk = 1,
+		visCol = c3(0,255,0), hidCol = c3(255,0,0), teamCol = c3(0,150,255),
+		glow = false, glowStr = 2, interpPos = true,
+	},
+	ext = {
+		graySky = false, fmg = false, rmTex = false,
+		fullbright = false, noFog = false, antiAfk = false,
+	},
+}
+
+local _navSnd
+do
+	local s, snd = pcall(function()
+		local x = Instance.new("Sound")
+		x.SoundId = "rbxassetid://106128357156633"
+		x.Volume = 5
+		x.Parent = cg or lp:FindFirstChildOfClass("PlayerGui")
+		return x
+	end)
+	if s then _navSnd = snd end
+end
+local function playNav() if _navSnd then pcall(function() _navSnd:Stop(); _navSnd:Play() end) end end
+
+local _fpsBuf = tcreate(60)
+local _fpsI = 0
+local _fps = 60
+
+local function tickFps(dt)
+	_fpsI = (_fpsI % 60) + 1
+	_fpsBuf[_fpsI] = dt
+	local n = mn(#_fpsBuf, 60)
+	if n == 0 then return end
+	local sum = 0
+	for i = 1, n do sum += (_fpsBuf[i] or .016) end
+	_fps = floor(n / sum + .5)
+end
+
+local function getPing()
+	local pg = 50
+	pcall(function() pg = game:GetService("Stats").Network.ServerStatsItem["Data Ping"]:GetValue() end)
+	return floor(clamp(pg, 1, 9999))
+end
+local function getPingSec() return clamp(getPing() / 1000, .005, .5) end
+
+local NCOL = {
+	info = Color3.new(1,1,1), success = c3(80,255,80),
+	warning = c3(255,200,40), error = c3(255,80,80),
+}
+local _nfs, _nfpool = {}, {}
+
+local function mkNfSlot()
+	local bg = mkRect({Filled=true, Color=Color3.new(0,0,0), Transparency=0, ZIndex=9998, Thickness=0})
+	local tx = mkText({Size=13, ZIndex=10000})
+	local ac = mkRect({Filled=true, Color=c3(80,90,230), Transparency=0, ZIndex=9999})
+	if not bg or not tx then return nil end
+	return {bg=bg, tx=tx, acc=ac}
+end
+
+local function pushNf(msg, dur, nt)
+	dur = dur or 3; nt = nt or "info"
+	local slot = tremove(_nfpool) or mkNfSlot()
+	if not slot then return end
+	slot.msg = msg; slot.born = tk(); slot.life = dur
+	slot.alpha = 0; slot.offX = 250; slot.color = NCOL[nt] or NCOL.info
+	_nfs[#_nfs+1] = slot
+end
+
+local function tickNfs(dt)
+	local vp = vps()
+	local bx, by, pad, now = vp.X - 14, 52, 10, tk()
+	local rm = {}
+	for i, n in ipairs(_nfs) do
+		local age = now - n.born
+		local fi = clamp(age / .28, 0, 1)
+		local fo = clamp((n.life - age) / .45, 0, 1)
+		local a = mn(fi, fo)
+		n.alpha = a; n.offX = damp(n.offX, 0, .08, dt)
+		if age > n.life then
+			rm[#rm+1] = i; n.bg.Visible = false; n.tx.Visible = false
+			if n.acc then n.acc.Visible = false end
+		else
+			n.tx.Text = n.msg; n.tx.Color = n.color
+			local tb = n.tx.TextBounds or v2(#n.msg*7, 14)
+			local bw, bh = tb.X + pad*2 + 4, tb.Y + pad
+			local px, py = bx - bw + n.offX, by + (i-1)*(bh+5)
+			n.bg.Size = v2(bw,bh); n.bg.Position = v2(px,py)
+			n.bg.Transparency = a*.85; n.bg.Color = c3(15,15,20); n.bg.Visible = true
+			if n.acc then n.acc.Size = v2(3,bh); n.acc.Position = v2(px,py); n.acc.Transparency = a; n.acc.Color = c3(80,90,230); n.acc.Visible = true end
+			n.tx.Position = v2(px+pad+4, py+pad*.32); n.tx.Transparency = a; n.tx.Visible = true
+		end
+	end
+	for j = #rm, 1, -1 do
+		local idx = rm[j]; local n = tremove(_nfs, idx)
+		n.bg.Visible = false; n.tx.Visible = false
+		if n.acc then n.acc.Visible = false end
+		_nfpool[#_nfpool+1] = n
+	end
+end
+
+local _wm = {
+	bg = mkRect({Filled=true, Color=c3(12,12,18), ZIndex=9990}),
+	acc = mkRect({Filled=true, Color=c3(80,90,230), ZIndex=9991}),
+	txt = mkText({Size=12, ZIndex=9992, Font=Drawing.Fonts.Plex}),
+}
+local _wmOn = true
+
+local function tickWm()
+	if not _wmOn then
+		if _wm.bg then _wm.bg.Visible = false end
+		if _wm.acc then _wm.acc.Visible = false end
+		if _wm.txt then _wm.txt.Visible = false end
+		return
+	end
+	local str = sfmt("REP+  |  FPS: %d  |  Ping: %dms  |  %s", _fps, getPing(), os.date("%H:%M:%S"))
+	local pad = 8
+	if _wm.txt then
+		_wm.txt.Text = str; _wm.txt.Color = c3(220,220,230)
+		local tb = _wm.txt.TextBounds or v2(#str*7, 14)
+		local bw, bh = tb.X+pad*2, tb.Y+pad
+		if _wm.bg then _wm.bg.Size = v2(bw,bh); _wm.bg.Position = v2(10,8); _wm.bg.Transparency = .88; _wm.bg.Visible = true end
+		if _wm.acc then _wm.acc.Size = v2(bw,2); _wm.acc.Position = v2(10,8); _wm.acc.Transparency = 1; _wm.acc.Visible = true end
+		_wm.txt.Position = v2(10+pad, 8+pad*.32); _wm.txt.Transparency = 1; _wm.txt.Visible = true
+	end
+end
+
+local _ents = {}
+local _fades = {}
+local _morphs = {}
+local _chmPool = {}
+local _interpBuf = {}
+
+local function espCol(p, vis)
+	if sameTeam(p) then return Cfg.esp.showTeam and Cfg.esp.teamCol or nil end
+	return vis and Cfg.esp.visCol or Cfg.esp.hidCol
+end
+
+local function drawCornerBox(lines, x, y, w, h, col, thk, alpha, frac)
+	local cw, ch = floor(w*frac), floor(h*frac)
+	local segs = {
+		{x,y,x+cw,y},{x,y,x,y+ch},{x+w,y,x+w-cw,y},{x+w,y,x+w,y+ch},
+		{x,y+h,x+cw,y+h},{x,y+h,x,y+h-ch},{x+w,y+h,x+w-cw,y+h},{x+w,y+h,x+w,y+h-ch},
+	}
+	for i = 1, mn(8, #lines) do
+		local ln = lines[i]
+		if ln then local s = segs[i]; ln.From = v2(s[1],s[2]); ln.To = v2(s[3],s[4]); ln.Color = col; ln.Thickness = thk; ln.Transparency = alpha; ln.Visible = true end
+	end
+end
+
+local function fixSkel(ent, chr)
+	local ns = isR15(chr) and SKEL15 or SKEL6
+	if ent.rig == ns then return end
+	for _, ln in ipairs(ent.skelLn) do nuke(ln) end
+	ent.skelLn = tcreate(#ns)
+	for i = 1, #ns do ent.skelLn[i] = mkLine({ZIndex=51}) end
+	ent.rig = ns
+end
+
+local RemEsp, MkEsp
+
+MkEsp = function(p)
+	if p == lp then return end
+	if _ents[p] then RemEsp(p) end
+	local chr = p.Character
+	local sk = (chr and isR15(chr)) and SKEL15 or SKEL6
+	local ent = {
+		plr=p, box=mkRect({ZIndex=52}), corners=tcreate(8),
+		nm=mkText({Center=true,Size=13,ZIndex=53}), dstTx=mkText({Center=true,Size=11,ZIndex=53}),
+		hpTx=mkText({Center=true,Size=11,ZIndex=53}), wpnTx=mkText({Center=true,Size=10,ZIndex=53}),
+		flagTx=mkText({Center=false,Size=10,ZIndex=53}),
+		hpOl=mkRect({Filled=false,Color=Color3.new(0,0,0),ZIndex=51}),
+		hpBg=mkRect({Filled=true,Color=c3(50,50,50),ZIndex=52}),
+		hpFl=mkRect({Filled=true,ZIndex=53}),
+		trc=mkLine({ZIndex=51}), skelLn=tcreate(#sk),
+		oofTri=mkTri({Filled=true,ZIndex=48}),
+		rig=sk, glowLn=nil, tier=1,
+	}
+	for i = 1, 8 do ent.corners[i] = mkLine({ZIndex=52}) end
+	for i = 1, #sk do ent.skelLn[i] = mkLine({ZIndex=51}) end
+	if Cfg.esp.glow then ent.glowLn = tcreate(8); for i=1,8 do ent.glowLn[i] = mkLine({ZIndex=50,Thickness=Cfg.esp.glowStr+2}) end end
+	_ents[p] = ent
+	_fades[p] = {cur=0,goal=1,dead=false,born=tk()}
+	_morphs[p] = Cfg.esp.corner and 1 or 0
+	_interpBuf[p] = {sx=0,sy=0,bw=40,bh=80,topY=0,botY=80}
+	if Cfg.esp.chams then pcall(function()
+		local hl = Instance.new("Highlight"); hl.Name = "rc_"..tostring(rng(1000,9999))
+		hl.FillTransparency=.65; hl.OutlineTransparency=.3; hl.DepthMode=Enum.HighlightDepthMode.AlwaysOnTop
+		hl.Adornee=chr; hl.Enabled=true; hl.Parent=cg or lp:FindFirstChildOfClass("PlayerGui")
+		_chmPool[p] = hl
+	end) end
+end
+
+RemEsp = function(p)
+	local ent = _ents[p]
+	if ent then
+		nuke(ent.box); nuke(ent.nm); nuke(ent.dstTx); nuke(ent.hpTx)
+		nuke(ent.wpnTx); nuke(ent.flagTx); nuke(ent.hpOl); nuke(ent.hpBg)
+		nuke(ent.hpFl); nuke(ent.trc); nuke(ent.oofTri)
+		for _, ln in ipairs(ent.corners) do nuke(ln) end
+		for _, ln in ipairs(ent.skelLn) do nuke(ln) end
+		if ent.glowLn then for _, ln in ipairs(ent.glowLn) do nuke(ln) end end
+		_ents[p] = nil
+	end
+	_fades[p] = nil; _morphs[p] = nil; _interpBuf[p] = nil
+	if p.Character then _los[p.Character] = nil end
+	local ch = _chmPool[p]; if ch then kill(ch); _chmPool[p] = nil end
+end
+
+local function hideEnt(ent)
+	if not ent then return end
+	local all = {ent.box,ent.nm,ent.dstTx,ent.hpTx,ent.wpnTx,ent.flagTx,ent.hpOl,ent.hpBg,ent.hpFl,ent.trc,ent.oofTri}
+	for _, d in ipairs(all) do if d then d.Visible = false end end
+	for _, ln in ipairs(ent.corners) do if ln then ln.Visible = false end end
+	for _, ln in ipairs(ent.skelLn) do if ln then ln.Visible = false end end
+	if ent.glowLn then for _, ln in ipairs(ent.glowLn) do if ln then ln.Visible = false end end end
+end
+
+local function drawOof(ent, wpos, col, alpha)
+	if not ent.oofTri then return end
+	local ctr = scrn(); local vs = vps()
+	local sp3 = cam:WorldToViewportPoint(wpos)
+	local sp = v2(sp3.X, sp3.Y); local dir = sp - ctr
+	if dir.Magnitude < 1 then ent.oofTri.Visible = false; return end
+	dir = dir.Unit; local m = 50
+	local hw, hh = vs.X*.5-m, vs.Y*.5-m
+	local sx = abs(dir.X) > .001 and abs(hw/dir.X) or huge
+	local sy = abs(dir.Y) > .001 and abs(hh/dir.Y) or huge
+	local sc = mn(sx,sy); local ep = ctr + dir*sc
+	local prp = v2(-dir.Y, dir.X); local asz = 10
+	ent.oofTri.PointA = ep+dir*asz; ent.oofTri.PointB = ep-dir*(asz*.4)+prp*(asz*.5)
+	ent.oofTri.PointC = ep-dir*(asz*.4)-prp*(asz*.5)
+	ent.oofTri.Color = col; ent.oofTri.Transparency = alpha*.8; ent.oofTri.Filled = true; ent.oofTri.Visible = true
+end
+
+local function calcTier(dist)
+	if dist < 120 then return 1 end
+	if dist < 350 then return 2 end
+	return dist < 600 and 3 or 4
+end
+
+local _fc = 0
+
+local function tickEnt(ent, dt)
+	local p = ent.plr
+	if not validPlr(p) then RemEsp(p); return end
+	local chr = p.Character
+	if not validChr(chr) then hideEnt(ent); return end
+	local root = getRoot(chr); local head = getHead(chr); local hum = getHum(chr)
+	if not root then hideEnt(ent); return end
+	local camPos = cam.CFrame.Position
+	local dist = (root.Position - camPos).Magnitude
+	ent.tier = calcTier(dist)
+	if ent.tier > 1 and (_fc % ent.tier) ~= 0 then return end
+	local fs = _fades[p]
+	if not fs then fs = {cur=0,goal=1,dead=false,born=tk()}; _fades[p] = fs end
+	if hum then
+		if hum.Health <= 0 then if not fs.dead then fs.dead=true; fs.goal=0 end
+		else if fs.dead then fs.dead=false; fs.goal=1; fs.born=tk() end; fs.goal=1 end
+	else if not fs.dead then fs.dead=true; fs.goal=0 end end
+	if abs(fs.cur - fs.goal) > .003 then fs.cur = damp(fs.cur, fs.goal, .05, dt*ent.tier) else fs.cur = fs.goal end
+	if Cfg.esp.teamChk and sameTeam(p) and not Cfg.esp.showTeam then hideEnt(ent); return end
+	if dist > Cfg.esp.range then hideEnt(ent); return end
+	local vis = not Cfg.esp.visChk or checkVis(chr)
+	local col = espCol(p, vis)
+	if not col then hideEnt(ent); return end
+	local rs3, onScr = cam:WorldToViewportPoint(root.Position)
+	if not onScr then
+		hideEnt(ent); if Cfg.esp.oofArrows then drawOof(ent, root.Position, col, fs.cur) end; return
+	end
+	if ent.oofTri then ent.oofTri.Visible = false end
+	local hp = head and head.Position or (root.Position + v3(0,1.5,0))
+	local ts3 = cam:WorldToViewportPoint(hp + v3(0,.6,0))
+	local bs3 = cam:WorldToViewportPoint(root.Position - v3(0,3,0))
+	local rawH = mx(4, abs(ts3.Y - bs3.Y)); local rawW = rawH * .55
+	local ib = _interpBuf[p]
+	if ib and Cfg.esp.interpPos then
+		local spd = .12
+		ib.sx = damp(ib.sx, rs3.X, spd, dt); ib.sy = damp(ib.sy, rs3.Y, spd, dt)
+		ib.bw = damp(ib.bw, rawW, spd, dt); ib.bh = damp(ib.bh, rawH, spd, dt)
+		ib.topY = damp(ib.topY, ts3.Y, spd, dt); ib.botY = damp(ib.botY, bs3.Y, spd, dt)
+	else
+		if not ib then ib = {}; _interpBuf[p] = ib end
+		ib.sx=rs3.X; ib.sy=rs3.Y; ib.bw=rawW; ib.bh=rawH; ib.topY=ts3.Y; ib.botY=bs3.Y
+	end
+	local boxH, boxW = ib.bh, ib.bw; local boxX = ib.sx - boxW*.5; local boxY = ib.topY
+	local age = tk() - (fs.born or tk()); local bFade = sstep(clamp(age/.4, 0, 1)); local alpha = fs.cur * bFade
+	local mt = Cfg.esp.corner and 1 or 0
+	if not _morphs[p] then _morphs[p] = mt end
+	_morphs[p] = damp(_morphs[p], mt, .08, dt)
+	local mfrac = lerp(.5, .25, _morphs[p])
+	local chm = _chmPool[p]
+	if Cfg.esp.chams then
+		if not chm then pcall(function()
+			local hl = Instance.new("Highlight"); hl.Name="rc_"..tostring(rng(1000,9999))
+			hl.FillTransparency=.65; hl.OutlineTransparency=.3; hl.DepthMode=Enum.HighlightDepthMode.AlwaysOnTop
+			hl.Adornee=chr; hl.Enabled=true; hl.Parent=cg or lp:FindFirstChildOfClass("PlayerGui")
+			_chmPool[p]=hl; chm=hl
+		end) end
+		if chm then pcall(function() chm.Adornee=chr; chm.FillColor=col; chm.OutlineColor=col; chm.Enabled=true end) end
+	else if chm then pcall(function() chm.Enabled=false end) end end
+	if Cfg.esp.boxes then
+		if ent.box then ent.box.Visible = false end
+		drawCornerBox(ent.corners, boxX, boxY, boxW, boxH, col, Cfg.esp.boxThk, alpha, mfrac)
+		if Cfg.esp.glow and ent.glowLn then
+			drawCornerBox(ent.glowLn, boxX, boxY, boxW, boxH, Color3.new(col.R*.6,col.G*.6,col.B*.6), Cfg.esp.glowStr+2, alpha*.3, mfrac)
+		end
+	else
+		if ent.box then ent.box.Visible = false end
+		for _, ln in ipairs(ent.corners) do if ln then ln.Visible = false end end
+		if ent.glowLn then for _, ln in ipairs(ent.glowLn) do if ln then ln.Visible = false end end end
+	end
+	if Cfg.esp.names and ent.nm then
+		local dn, un = p.DisplayName, p.Name
+		ent.nm.Text = (dn ~= un) and (dn.." ("..un..")") or un
+		ent.nm.Position = v2(ib.sx, boxY-16); ent.nm.Color = col; ent.nm.Transparency = alpha; ent.nm.Visible = true
+	elseif ent.nm then ent.nm.Visible = false end
+	local bY = ib.botY + 2
+	if Cfg.esp.dist and ent.dstTx then
+		ent.dstTx.Text = sfmt("[%dm]", floor(dist)); ent.dstTx.Position = v2(ib.sx, bY)
+		ent.dstTx.Color = col; ent.dstTx.Transparency = alpha; ent.dstTx.Visible = true; bY += 14
+	elseif ent.dstTx then ent.dstTx.Visible = false end
+	if Cfg.esp.weapon and ent.wpnTx then
+		local wpn = getWpn(chr)
+		if wpn then ent.wpnTx.Text = "["..wpn.."]"; ent.wpnTx.Position = v2(ib.sx, bY); ent.wpnTx.Color = c3(220,180,60); ent.wpnTx.Transparency = alpha; ent.wpnTx.Visible = true; bY += 13
+		else ent.wpnTx.Visible = false end
+	elseif ent.wpnTx then ent.wpnTx.Visible = false end
+	if Cfg.esp.flags and ent.flagTx then
+		local fl = {}
+		if getWpn(chr) then fl[#fl+1] = "ARMED" end
+		if hum and hum.Health / mx(hum.MaxHealth,1) < .25 then fl[#fl+1] = "LOW" end
+		if hum then local st = hum:GetState(); if st == Enum.HumanoidStateType.Freefall or st == Enum.HumanoidStateType.Jumping then fl[#fl+1] = "AIR" end end
+		if #fl > 0 then ent.flagTx.Text = table.concat(fl," | "); ent.flagTx.Position = v2(boxX+boxW+4, boxY); ent.flagTx.Color = c3(255,200,80); ent.flagTx.Transparency = alpha; ent.flagTx.Visible = true
+		else ent.flagTx.Visible = false end
+	elseif ent.flagTx then ent.flagTx.Visible = false end
+	if Cfg.esp.hbar and hum then
+		local mxh = mx(hum.MaxHealth,1); local pct = clamp(hum.Health/mxh,0,1)
+		local bW = mx(3,floor(boxW*.07)); local bX = boxX-bW-3
+		local bH = mx(1, boxH*bFade); local bYp = boxY + (boxH-bH)
+		local fH = mx(1, bH*pct); local hc = hpcol(pct)
+		if ent.hpOl then ent.hpOl.Size=v2(bW+2,bH+2); ent.hpOl.Position=v2(bX-1,bYp-1); ent.hpOl.Transparency=alpha; ent.hpOl.Visible=true end
+		if ent.hpBg then ent.hpBg.Size=v2(bW,bH); ent.hpBg.Position=v2(bX,bYp); ent.hpBg.Transparency=alpha*.5; ent.hpBg.Visible=true end
+		if ent.hpFl then ent.hpFl.Size=v2(bW,fH); ent.hpFl.Position=v2(bX,bYp+(bH-fH)); ent.hpFl.Color=hc; ent.hpFl.Transparency=alpha; ent.hpFl.Visible=true end
+		if Cfg.esp.htxt and ent.hpTx then
+			ent.hpTx.Text=sfmt("%d/%d",floor(hum.Health),floor(hum.MaxHealth)); ent.hpTx.Position=v2(bX+bW*.5,bYp-15)
+			ent.hpTx.Color=hc; ent.hpTx.Transparency=alpha; ent.hpTx.Visible=true
+		elseif ent.hpTx then ent.hpTx.Visible=false end
+	else
+		if ent.hpOl then ent.hpOl.Visible=false end; if ent.hpBg then ent.hpBg.Visible=false end
+		if ent.hpFl then ent.hpFl.Visible=false end; if ent.hpTx then ent.hpTx.Visible=false end
+	end
+	if Cfg.esp.tracers and ent.trc then
+		local vs = vps(); local fp
+		if Cfg.esp.tracerOrigin == "Top" then fp = v2(vs.X*.5,0)
+		elseif Cfg.esp.tracerOrigin == "Center" then fp = v2(vs.X*.5,vs.Y*.5)
+		else fp = v2(vs.X*.5, vs.Y) end
+		ent.trc.From = fp; ent.trc.To = v2(ib.sx,ib.sy); ent.trc.Color = col; ent.trc.Transparency = alpha; ent.trc.Visible = true
+	elseif ent.trc then ent.trc.Visible = false end
+	if Cfg.esp.skel then
+		fixSkel(ent, chr); local bones = ent.rig
+		for i, bone in ipairs(bones) do
+			local ln = ent.skelLn[i]; if not ln then continue end
+			local p1, p2 = chr:FindFirstChild(bone[1]), chr:FindFirstChild(bone[2])
+			if p1 and p2 and p1:IsA("BasePart") and p2:IsA("BasePart") then
+				local s1,o1 = cam:WorldToViewportPoint(p1.Position); local s2,o2 = cam:WorldToViewportPoint(p2.Position)
+				if o1 and o2 then ln.From=v2(s1.X,s1.Y); ln.To=v2(s2.X,s2.Y); ln.Color=col; ln.Transparency=alpha; ln.Visible=true
+				else ln.Visible=false end
+			else ln.Visible=false end
+		end
+		for i = #bones+1, #ent.skelLn do if ent.skelLn[i] then ent.skelLn[i].Visible=false end end
+	else for _, ln in ipairs(ent.skelLn) do if ln then ln.Visible=false end end end
+end
+
+local _pvwActive = false
+local _pvwGui, _pvwFrame, _pvwVp, _pvwCam, _pvwWm = nil,nil,nil,nil,nil
+local _pvwDraw = {}
+local _pvwAng, _pvwT, _pvwMorph = 0, 0, 0
+local _pvwOrig = {}
+
+local DUMMY = {
+	{n="Head",s=v3(1,1,1),p=v3(0,5,0),c=c3(255,204,153)},
+	{n="UpperTorso",s=v3(1.8,1.4,.9),p=v3(0,3.8,0),c=c3(48,48,52)},
+	{n="LowerTorso",s=v3(1.5,.5,.8),p=v3(0,2.85,0),c=c3(48,48,52)},
+	{n="HumanoidRootPart",s=v3(2,2,1),p=v3(0,3,0),t=true},
+	{n="LeftUpperArm",s=v3(.65,1.3,.65),p=v3(-1.35,3.8,0),c=c3(48,48,52)},
+	{n="RightUpperArm",s=v3(.65,1.3,.65),p=v3(1.35,3.8,0),c=c3(48,48,52)},
+	{n="LeftLowerArm",s=v3(.55,1.2,.55),p=v3(-1.35,2.5,0),c=c3(255,204,153)},
+	{n="RightLowerArm",s=v3(.55,1.2,.55),p=v3(1.35,2.5,0),c=c3(255,204,153)},
+	{n="LeftHand",s=v3(.45,.35,.45),p=v3(-1.35,1.75,0),c=c3(255,204,153)},
+	{n="RightHand",s=v3(.45,.35,.45),p=v3(1.35,1.75,0),c=c3(255,204,153)},
+	{n="LeftUpperLeg",s=v3(.65,1.3,.65),p=v3(-.42,2,0),c=c3(30,30,35)},
+	{n="RightUpperLeg",s=v3(.65,1.3,.65),p=v3(.42,2,0),c=c3(30,30,35)},
+	{n="LeftLowerLeg",s=v3(.55,1.3,.55),p=v3(-.42,.75,0),c=c3(30,30,35)},
+	{n="RightLowerLeg",s=v3(.55,1.3,.55),p=v3(.42,.75,0),c=c3(30,30,35)},
+	{n="LeftFoot",s=v3(.55,.35,.85),p=v3(-.42,.1,.05),c=c3(30,30,35)},
+	{n="RightFoot",s=v3(.55,.35,.85),p=v3(.42,.1,.05),c=c3(30,30,35)},
+}
+
+local function vpProject(vpf, vpc, wp)
+	local lp3 = vpc.CFrame:PointToObjectSpace(wp)
+	if lp3.Z >= 0 then return zv2, false end
+	local hfov = tan(rad(vpc.FieldOfView*.5))
+	local as = vpf.AbsoluteSize; local ap = vpf.AbsolutePosition
+	if as.X < 1 or as.Y < 1 then return zv2, false end
+	local asp = as.X / as.Y
+	local nx = -lp3.X / (-lp3.Z*hfov*asp); local ny = -lp3.Y / (-lp3.Z*hfov)
+	return v2((nx*.5+.5)*as.X+ap.X+_inset.X, (ny*.5+.5)*as.Y+ap.Y+_inset.Y), true
+end
+
+local function killPvw()
+	for _, d in pairs(_pvwDraw) do
+		if type(d)=="table" then for _, sub in pairs(d) do nuke(sub) end else nuke(d) end
+	end
+	_pvwDraw={}; kill(_pvwGui); _pvwGui=nil; _pvwFrame=nil; _pvwVp=nil; _pvwCam=nil; _pvwWm=nil; _pvwActive=false; _pvwOrig={}
+end
+
+local function spawnPvw()
+	killPvw()
+	local ok = pcall(function()
+		local gui = Instance.new("ScreenGui"); gui.Name="RP_"..tostring(rng(100,999))
+		gui.ResetOnSpawn=false; gui.ZIndexBehavior=Enum.ZIndexBehavior.Sibling; gui.DisplayOrder=100
+		local pOk = pcall(function() gui.Parent = cg end)
+		if not pOk or not gui.Parent then gui.Parent = lp:WaitForChild("PlayerGui",5) end; _pvwGui=gui
+		local fr = Instance.new("Frame"); fr.Size=ud2(0,200,0,300); fr.Position=ud2(1,-224,.5,-150)
+		fr.BackgroundColor3=c3(10,10,14); fr.BackgroundTransparency=.05; fr.BorderSizePixel=0; fr.Parent=gui; _pvwFrame=fr
+		local crn = Instance.new("UICorner"); crn.CornerRadius=ud(0,8); crn.Parent=fr
+		local stk = Instance.new("UIStroke"); stk.Color=c3(80,90,230); stk.Thickness=2; stk.Transparency=.1; stk.Parent=fr
+		local ttl = Instance.new("TextLabel"); ttl.Size=ud2(1,0,0,26); ttl.BackgroundTransparency=1
+		ttl.Text="3D PREVIEW"; ttl.TextColor3=c3(200,200,220); ttl.Font=Enum.Font.GothamBold; ttl.TextSize=11; ttl.Parent=fr
+		local al = Instance.new("Frame"); al.Size=ud2(1,-16,0,1); al.Position=ud2(0,8,0,26)
+		al.BackgroundColor3=c3(80,90,230); al.BackgroundTransparency=.4; al.BorderSizePixel=0; al.Parent=fr
+		local vp = Instance.new("ViewportFrame"); vp.Size=ud2(1,-16,1,-36); vp.Position=ud2(0,8,0,30)
+		vp.BackgroundTransparency=1; vp.LightColor=c3(240,240,255); vp.LightDirection=v3(-1,-.8,-.6); vp.Ambient=c3(160,160,180); vp.Parent=fr; _pvwVp=vp
+		local cm = Instance.new("Camera"); cm.FieldOfView=35; cm.CFrame=cf(v3(8,3.5,0),v3(0,3,0)); cm.Parent=vp; vp.CurrentCamera=cm; _pvwCam=cm
+		local wm = Instance.new("WorldModel"); wm.Parent=vp; _pvwWm=wm; _pvwOrig={}
+		for _, info in ipairs(DUMMY) do
+			local pt = Instance.new("Part"); pt.Name=info.n; pt.Size=info.s; pt.CFrame=cf(info.p)
+			pt.Anchored=true; pt.CanCollide=false; pt.CastShadow=false
+			pt.TopSurface=Enum.SurfaceType.Smooth; pt.BottomSurface=Enum.SurfaceType.Smooth; pt.Material=Enum.Material.SmoothPlastic
+			if info.t then pt.Transparency=1 else pt.Color=info.c or c3(128,128,128) end
+			pt.Parent=wm; _pvwOrig[info.n]=info.p
+		end
+		local fl = Instance.new("Part"); fl.Name="Floor"; fl.Size=v3(20,.1,20); fl.CFrame=cf(v3(0,-.05,0))
+		fl.Anchored=true; fl.CanCollide=false; fl.CastShadow=false; fl.Color=c3(22,22,28)
+		fl.Material=Enum.Material.SmoothPlastic; fl.TopSurface=Enum.SurfaceType.Smooth; fl.BottomSurface=Enum.SurfaceType.Smooth; fl.Parent=wm
+	end)
+	if not ok then killPvw(); pushNf("3D Preview failed",3,"error"); return end
+	_pvwDraw.corners={}; for i=1,8 do _pvwDraw.corners[i]=mkLine({ZIndex=9985,Color=c3(0,255,0)}) end
+	_pvwDraw.nm=mkText({Text="Player123",Size=12,Center=true,ZIndex=9986})
+	_pvwDraw.dstTx=mkText({Text="[42m]",Size=10,Center=true,ZIndex=9986})
+	_pvwDraw.hpOl=mkRect({Filled=false,Color=Color3.new(0,0,0),ZIndex=9984})
+	_pvwDraw.hpBg=mkRect({Filled=true,Color=c3(50,50,50),ZIndex=9985})
+	_pvwDraw.hpFl=mkRect({Filled=true,Color=c3(0,255,0),ZIndex=9986})
+	_pvwDraw.trc=mkLine({ZIndex=9983})
+	_pvwDraw.skelLn={}; for i=1,#SKEL15 do _pvwDraw.skelLn[i]=mkLine({ZIndex=9985}) end
+	_pvwDraw.wpnTx=mkText({Text="[AK-47]",Size=9,Center=true,ZIndex=9986,Color=c3(220,180,60)})
+	_pvwActive=true; pushNf("3D Preview active",2,"success")
+end
+
+local function tickPvw(dt)
+	if not _pvwActive or not _pvwVp or not _pvwCam or not _pvwWm then return end
+	_pvwAng += dt*.4; _pvwT += dt
+	local cx, cz = sin(_pvwAng)*9, cos(_pvwAng)*9
+	_pvwCam.CFrame = cf(v3(cx,3.2,cz), v3(0,3,0))
+	local bob = sin(_pvwT*1.8)*.08
+	for _, pt in ipairs(_pvwWm:GetChildren()) do
+		if pt:IsA("BasePart") and pt.Name ~= "Floor" then
+			local og = _pvwOrig[pt.Name]; if og then pt.CFrame = cf(og + v3(0,bob,0)) end
+		end
+	end
+	local col = Cfg.esp.visCol
+	local hdPt = _pvwWm:FindFirstChild("Head"); local rtPt = _pvwWm:FindFirstChild("HumanoidRootPart")
+	if not hdPt or not rtPt then return end
+	local tp, tOk = vpProject(_pvwVp, _pvwCam, hdPt.CFrame.Position + v3(0,.6,0))
+	local cp, cOk = vpProject(_pvwVp, _pvwCam, rtPt.CFrame.Position)
+	local bp, bOk = vpProject(_pvwVp, _pvwCam, rtPt.CFrame.Position - v3(0,3,0))
+	if not (tOk and cOk and bOk) then
+		for _, d in pairs(_pvwDraw) do
+			if type(d)=="table" then for _, sub in pairs(d) do if sub and sub.Visible ~= nil then sub.Visible=false end end
+			elseif d and d.Visible ~= nil then d.Visible=false end
+		end; return
+	end
+	local bxH = mx(4,abs(tp.Y-bp.Y)); local bxW = bxH*.55; local bxX = cp.X-bxW*.5; local bxY = tp.Y
+	_pvwMorph = damp(_pvwMorph, Cfg.esp.corner and 1 or 0, .08, dt)
+	local fr = lerp(.5,.25,_pvwMorph)
+	if Cfg.esp.boxes and _pvwDraw.corners then drawCornerBox(_pvwDraw.corners,bxX,bxY,bxW,bxH,col,Cfg.esp.boxThk,1,fr)
+	else for _, ln in ipairs(_pvwDraw.corners or {}) do if ln then ln.Visible=false end end end
+	if Cfg.esp.names and _pvwDraw.nm then _pvwDraw.nm.Text="Player123"; _pvwDraw.nm.Position=v2(cp.X,bxY-15); _pvwDraw.nm.Color=col; _pvwDraw.nm.Transparency=1; _pvwDraw.nm.Visible=true
+	elseif _pvwDraw.nm then _pvwDraw.nm.Visible=false end
+	local dY = bp.Y+3
+	if Cfg.esp.dist and _pvwDraw.dstTx then _pvwDraw.dstTx.Text="[42m]"; _pvwDraw.dstTx.Position=v2(cp.X,dY); _pvwDraw.dstTx.Color=col; _pvwDraw.dstTx.Transparency=1; _pvwDraw.dstTx.Visible=true; dY+=13
+	elseif _pvwDraw.dstTx then _pvwDraw.dstTx.Visible=false end
+	if Cfg.esp.weapon and _pvwDraw.wpnTx then _pvwDraw.wpnTx.Text="[M4A1]"; _pvwDraw.wpnTx.Position=v2(cp.X,dY); _pvwDraw.wpnTx.Transparency=1; _pvwDraw.wpnTx.Visible=true
+	elseif _pvwDraw.wpnTx then _pvwDraw.wpnTx.Visible=false end
+	if Cfg.esp.hbar then
+		local barW = mx(3,floor(bxW*.07)); local barX = bxX-barW-3; local fH = mx(1,bxH*.72); local hc = hpcol(.72)
+		if _pvwDraw.hpOl then _pvwDraw.hpOl.Size=v2(barW+2,bxH+2); _pvwDraw.hpOl.Position=v2(barX-1,bxY-1); _pvwDraw.hpOl.Transparency=1; _pvwDraw.hpOl.Visible=true end
+		if _pvwDraw.hpBg then _pvwDraw.hpBg.Size=v2(barW,bxH); _pvwDraw.hpBg.Position=v2(barX,bxY); _pvwDraw.hpBg.Transparency=.5; _pvwDraw.hpBg.Visible=true end
+		if _pvwDraw.hpFl then _pvwDraw.hpFl.Size=v2(barW,fH); _pvwDraw.hpFl.Position=v2(barX,bxY+(bxH-fH)); _pvwDraw.hpFl.Color=hc; _pvwDraw.hpFl.Transparency=1; _pvwDraw.hpFl.Visible=true end
+	else
+		if _pvwDraw.hpOl then _pvwDraw.hpOl.Visible=false end
+		if _pvwDraw.hpBg then _pvwDraw.hpBg.Visible=false end
+		if _pvwDraw.hpFl then _pvwDraw.hpFl.Visible=false end
+	end
+	if Cfg.esp.tracers and _pvwDraw.trc then
+		local va = _pvwVp.AbsolutePosition; local vs = _pvwVp.AbsoluteSize
+		_pvwDraw.trc.From=v2(va.X+vs.X*.5+_inset.X,va.Y+vs.Y+_inset.Y); _pvwDraw.trc.To=cp
+		_pvwDraw.trc.Color=col; _pvwDraw.trc.Transparency=1; _pvwDraw.trc.Visible=true
+	elseif _pvwDraw.trc then _pvwDraw.trc.Visible=false end
+	if Cfg.esp.skel and _pvwDraw.skelLn then
+		for i, bone in ipairs(SKEL15) do
+			local ln = _pvwDraw.skelLn[i]; if not ln then continue end
+			local a, b = _pvwWm:FindFirstChild(bone[1]), _pvwWm:FindFirstChild(bone[2])
+			if a and b then
+				local sa,oa = vpProject(_pvwVp,_pvwCam,a.CFrame.Position); local sb,ob = vpProject(_pvwVp,_pvwCam,b.CFrame.Position)
+				if oa and ob then ln.From=sa; ln.To=sb; ln.Color=col; ln.Transparency=1; ln.Visible=true else ln.Visible=false end
+			else ln.Visible=false end
+		end
+	else for _, ln in ipairs(_pvwDraw.skelLn or {}) do if ln then ln.Visible=false end end end
+end
+
+local _AIM_PARTS = {
+	"Head","UpperTorso","LowerTorso","HumanoidRootPart",
+	"LeftUpperArm","RightUpperArm","LeftLowerArm","RightLowerArm",
+	"LeftUpperLeg","RightUpperLeg","LeftHand","RightHand",
+}
+
+local _aimOn = false
+local _aimLck = false
+local _aimTgt = nil
+local _stkTgt = nil
+local _stkGrace = 0
+local _lastSwitch = 0
+local _lockTime = 0
+local _engageDist = 0
+
+local _vbufs = {}
+local _prevVel = {}
+local _posHist = {}
+local _accelBuf = {}
+
+local _bzCtrl = zv3
+local _bzT = 0
+local _bzFrom = zv3
+local _bzTo = zv3
+local _bzPeak = zv3
+
+local _ovState = {phase=0, timer=0, ovPos=zv3}
+
+local _rxnQueue = nil
+local _rxnReady = true
+
+local _trigState = {armed=false, timer=0, burstN=0, lastFire=0}
+
+local _flickState = {active=false, t=0, startLook=zv3, endLook=zv3, dur=0}
+
+local _persistScore = {}
+
+local _aimTrail = {from=zv3, tangent=zv3, t=0}
+
+local fovRing = mkCirc({Radius=200, NumSides=72, ZIndex=999})
+local fovFill = mkCirc({Radius=200, NumSides=72, Filled=true, ZIndex=998})
+local lockTx = mkText({Size=13, ZIndex=1000})
+
+local _predOrb
+local function mkOrb()
+	kill(_predOrb); _predOrb=nil
+	pcall(function()
+		local p = Instance.new("Part"); p.Name="ro_"..tostring(rng(100,999))
+		p.Shape=Enum.PartType.Ball; p.Size=v3(.8,.8,.8); p.Material=Enum.Material.Neon
+		p.Color=c3(0,255,255); p.Transparency=1; p.Anchored=true; p.CanCollide=false; p.CastShadow=false
+		p.Parent=ws; _predOrb=p
+	end)
+end
+mkOrb()
+
+local function updOrb(pos)
+	if not Cfg.aim.predVis or not _aimOn or not pos then
+		if _predOrb then pcall(function() _predOrb.Transparency=1 end) end; return
+	end
+	if not _predOrb or not _predOrb.Parent then mkOrb() end
+	if _predOrb then pcall(function() _predOrb.Position=pos; _predOrb.Transparency=.35; _predOrb.Color=c3(0,255,255) end) end
+end
+
+local _tgtHL
+local function mkHL()
+	kill(_tgtHL); _tgtHL=nil
+	pcall(function()
+		local hl = Instance.new("Highlight"); hl.Name="rh_"..tostring(rng(100,999))
+		hl.FillTransparency=.7; hl.OutlineTransparency=0; hl.DepthMode=Enum.HighlightDepthMode.AlwaysOnTop; hl.Enabled=false
+		local ok = pcall(function() hl.Parent=cg end)
+		if not ok then pcall(function() hl.Parent=lp:WaitForChild("PlayerGui",2) end) end; _tgtHL=hl
+	end)
+end
+mkHL()
+
+local function updHL()
+	if not _tgtHL then mkHL() end; if not _tgtHL then return end
+	if Cfg.aim.hlTgt and _aimTgt and validChr(_aimTgt.Character) then
+		_tgtHL.Adornee=_aimTgt.Character; _tgtHL.FillColor=c3(255,40,40); _tgtHL.OutlineColor=c3(255,60,60); _tgtHL.Enabled=true
+	else _tgtHL.Enabled=false; _tgtHL.Adornee=nil end
+end
+
+local function pnoise(seed, freq, amp)
+	local t = tk()*freq + seed
+	return (sin(t*1.3)*.5 + sin(t*2.7+.8)*.3 + cos(t*.9+1.6)*.2) * amp
+end
+
+local function brownNoise(prev, rate, amp, dt)
+	local drift = (rng() - .5) * 2 * rate * dt
+	return clamp(prev + drift, -amp, amp)
+end
+
+local _bnX, _bnY, _bnZ = 0, 0, 0
+
+local function cubicHermite(p0, m0, p1, m1, t)
+	local t2, t3 = t*t, t*t*t
+	return p0*(2*t3-3*t2+1) + m0*(t3-2*t2+t) + p1*(-2*t3+3*t2) + m1*(t3-t2)
+end
+
+local function quadBezier(a, ctrl, b, t)
+	local u = 1-t
+	return a*(u*u) + ctrl*(2*u*t) + b*(t*t)
+end
+
+local function cubicBezier(a, c1, c2, b, t)
+	local u = 1-t
+	return a*(u*u*u) + c1*(3*u*u*t) + c2*(3*u*t*t) + b*(t*t*t)
+end
+
+local function getSmoothedVel(chr)
+	if not chr then return zv3 end
+	local r = getRoot(chr); if not r then return zv3 end
+	local vel = r.AssemblyLinearVelocity or zv3
+	if vel.Magnitude < Cfg.aim.deadzone then return zv3 end
+	local buf = _vbufs[chr]
+	if not buf then buf = {s=tcreate(Cfg.aim.velFrames), i=0, c=0}; _vbufs[chr]=buf end
+	local mxf = mx(1, Cfg.aim.velFrames)
+	buf.i = (buf.i % mxf) + 1; buf.s[buf.i] = vel; buf.c = mn(buf.c+1, mxf)
+	local sum = zv3
+	local w = 0
+	for i = 1, buf.c do
+		local sv = buf.s[((buf.i - i) % mxf) + 1]
+		if sv then
+			local age = i - 1
+			local weight = exp(-age * .3)
+			sum = sum + sv * weight
+			w += weight
+		end
+	end
+	return w > 0 and sum / w or zv3
+end
+
+local function getAccel(chr)
+	if not chr or not Cfg.aim.accelPred then return zv3 end
+	local vel = getSmoothedVel(chr)
+	local ab = _accelBuf[chr]
+	if not ab then ab = {prev=vel, smooth=zv3}; _accelBuf[chr]=ab end
+	local raw = (vel - ab.prev) * _fps
+	ab.prev = vel
+	ab.smooth = ab.smooth + (raw - ab.smooth) * .15
+	return ab.smooth
+end
+
+local function recordPos(chr)
+	if not chr then return end
+	local r = getRoot(chr); if not r then return end
+	local hist = _posHist[chr]
+	if not hist then hist = tcreate(20); _posHist[chr] = hist end
+	local now = tk()
+	tinsert(hist, 1, {p=r.Position, v=r.AssemblyLinearVelocity or zv3, t=now})
+	while #hist > 20 do tremove(hist) end
+end
+
+local function getBacktrackPos(chr)
+	if not Cfg.aim.backtrack then return nil end
+	local hist = _posHist[chr]; if not hist or #hist < 2 then return nil end
+	local delay = Cfg.aim.backtrackMs / 1000
+	local now = tk()
+	for i = 1, #hist-1 do
+		local a, b = hist[i], hist[i+1]
+		if (now - b.t) >= delay and (now - a.t) <= delay then
+			local frac = clamp((delay - (now - a.t)) / mx((a.t - b.t), .001), 0, 1)
+			return lerp(a.p, b.p, frac)
+		end
+	end
+	local last = hist[#hist]
+	if last and (now - last.t) <= delay + .1 then return last.p end
+	return nil
+end
+
+local function bestVisiblePart(chr)
+	if not Cfg.aim.multiPoint then return nil end
+	local fl = {cam}; local lc = lp.Character; if lc then fl[2] = lc end
+	_rp.FilterDescendantsInstances = fl
+	local org = cam.CFrame.Position
+	local ctr = scrn()
+	local best, bestD = nil, huge
+	for _, pn in ipairs(_AIM_PARTS) do
+		local pt = chr:FindFirstChild(pn)
+		if pt and pt:IsA("BasePart") then
+			local rc = ws:Raycast(org, pt.Position - org, _rp)
+			if not rc or rc.Instance:IsDescendantOf(chr) then
+				local sp, onS = cam:WorldToViewportPoint(pt.Position)
+				if onS then
+					local d = (ctr - v2(sp.X, sp.Y)).Magnitude
+					if d < bestD then bestD = d; best = pt end
+				end
+			end
+		end
+	end
+	return best
+end
+
+local function closestPartToXhair(chr)
+	local best, bestD = nil, huge; local mp = mpos()
+	for _, pn in ipairs(_AIM_PARTS) do
+		local pt = chr:FindFirstChild(pn)
+		if pt and pt:IsA("BasePart") then
+			local sp, onS = cam:WorldToViewportPoint(pt.Position)
+			if onS then local d = (mp - v2(sp.X,sp.Y)).Magnitude; if d < bestD then bestD=d; best=pt end end
+		end
+	end
+	return best
+end
+
+local function getAimPart(chr)
+	if not validChr(chr) then return nil end
+	if Cfg.aim.part == "Closest" then return closestPartToXhair(chr) end
+	if Cfg.aim.part == "Smart" then
+		local vis = bestVisiblePart(chr)
+		if vis then return vis end
+	end
+	return chr:FindFirstChild(Cfg.aim.part) or getHead(chr) or getRoot(chr)
+end
+
+local function predictPos(tpos, vel, accel, chr)
+	if not vel or vel.Magnitude < .1 then return tpos end
+	local pg = getPingSec()
+
+	if Cfg.aim.backtrack and chr then
+		local bt = getBacktrackPos(chr)
+		if bt then
+			local blend = clamp(Cfg.aim.backtrackMs / 200, 0, .6)
+			tpos = lerp(tpos, bt, blend)
+		end
+	end
+
+	if Cfg.aim.predMode == "Ping" then
+		local pred = tpos + vel * pg * 1.35
+		if accel and accel.Magnitude > .5 then
+			pred = pred + accel * pg * pg * .35
+		end
+		local dirChange = _accelBuf[chr] and _accelBuf[chr].smooth or zv3
+		if dirChange.Magnitude > 20 then
+			pred = pred + dirChange.Unit * pg * 2
+		end
+		return pred
+	else
+		local cdist = (tpos - cam.CFrame.Position).Magnitude
+		local et = cdist / mx(1, 1400)
+		local totalT = et + pg * .4
+		local pred = tpos + vel * totalT + .5 * grav * et * et
+		if accel and accel.Magnitude > .5 then
+			pred = pred + accel * totalT * .35
+		end
+		return pred
+	end
+end
+
+local function resolvePos(chr, aimPart)
+	if not Cfg.aim.resolver then return aimPart.Position end
+	local hum = getHum(chr); if not hum then return aimPart.Position end
+	local vel = getSmoothedVel(chr)
+	if vel.Magnitude < 3 then return aimPart.Position end
+	local moveDir = vel.Unit
+	local camFwd = (aimPart.Position - cam.CFrame.Position).Unit
+	local cross = moveDir:Cross(camFwd)
+	local lateralComp = cross.Magnitude
+	if lateralComp < .1 then return aimPart.Position end
+	local rightOff = moveDir:Cross(upv3).Unit * lateralComp * .45
+	local speed = vel.Magnitude
+	local scaledOff = rightOff * clamp(speed / 30, .2, 1.5)
+	return aimPart.Position + scaledOff
+end
+
+local function distAdaptPart(chr)
+	if not Cfg.aim.distAdapt then return nil end
+	local r = getRoot(chr); if not r then return nil end
+	local d = (r.Position - cam.CFrame.Position).Magnitude
+	if d < 30 then
+		return chr:FindFirstChild("Head") or chr:FindFirstChild("UpperTorso")
+	elseif d < 80 then
+		return chr:FindFirstChild("UpperTorso") or chr:FindFirstChild("Head")
+	else
+		return chr:FindFirstChild("HumanoidRootPart") or chr:FindFirstChild("UpperTorso")
+	end
+end
+
+local function getTargets()
+	local out = {}
+	local ctr = scrn(); local cp = cam.CFrame.Position
+	local fov = Cfg.aim.fov
+	if Cfg.aim.dynFov and _aimLck and _aimOn then fov = mx(Cfg.aim.dynFovMin, fov * .4) end
+	for _, p in ipairs(plrs:GetPlayers()) do
+		if p == lp then continue end
+		if not validPlr(p) or not validChr(p.Character) then continue end
+		local chr = p.Character; local hum = getHum(chr); local root = getRoot(chr)
+		if not hum or hum.Health <= 0 or not root then continue end
+		if Cfg.aim.teamChk and sameTeam(p) then continue end
+		if Cfg.aim.visChk and not checkVis(chr) then continue end
+		local wd = (root.Position - cp).Magnitude
+		if Cfg.aim.distChk and wd > Cfg.esp.range then continue end
+		local ap
+		if Cfg.aim.distAdapt then ap = distAdaptPart(chr) end
+		if not ap then ap = getAimPart(chr) end
+		if not ap then continue end
+		local sp, onS = cam:WorldToViewportPoint(ap.Position)
+		local spos = v2(sp.X, sp.Y); local cd = (ctr - spos).Magnitude
+		if onS and cd <= fov then
+			out[#out+1] = {plr=p, aim=ap, sd=cd, wd=wd, hp=hum.Health, mhp=hum.MaxHealth}
+		end
+	end
+	return out
+end
+
+local function scoreTarget(t)
+	local sc = 1000
+	sc -= t.sd * 3.0
+	sc -= (t.wd / 10) * 1.0
+	sc -= (t.hp / mx(t.mhp, 1)) * 150
+	if _persistScore[t.plr] then
+		sc += _persistScore[t.plr] * 0.8
+	end
+	if Cfg.aim.visChk and checkVis(t.plr.Character) then sc += 250 end
+	local vel = getSmoothedVel(t.plr.Character)
+	if vel.Magnitude < 5 then sc += 80 end
+	return sc
+end
+
+local function selectTarget()
+	local tgts = getTargets(); if #tgts == 0 then return nil end
+	local pri = Cfg.aim.priority
+	if pri == "Distance" then table.sort(tgts, function(a,b) return a.wd < b.wd end)
+	elseif pri == "Health" then table.sort(tgts, function(a,b) return a.hp < b.hp end)
+	elseif pri == "Smart" then table.sort(tgts, function(a,b) return scoreTarget(a) > scoreTarget(b) end)
+	else table.sort(tgts, function(a,b) return a.sd < b.sd end) end
+	return tgts[1].plr
+end
+
+local function genBezierCtrl(from, to)
+	local mid = (from + to) * .5
+	local dist = (to - from).Magnitude
+	local jit = Cfg.aim.bezierJitter
+	local off = v3(
+		(rng()-.5)*2 * dist * jit,
+		(rng()-.5)*2 * dist * jit * .6,
+		(rng()-.5)*2 * dist * jit * .3
+	)
+	return mid + off
+end
+
+local function initBezierPath(fromLook, toLook)
+	_bzFrom = fromLook
+	_bzTo = toLook
+	_bzPeak = genBezierCtrl(fromLook, toLook)
+	_bzT = 0
+end
+
+local function tickBezier(dt, sf)
+	_bzT = clamp(_bzT + dt * sf * 55, 0, 1)
+	local t = sstep5(_bzT)
+	return quadBezier(_bzFrom, _bzPeak, _bzTo, t)
+end
+
+local function initOvershoot(targetLook)
+	if not Cfg.aim.overshoot then return end
+	local ovStr = Cfg.aim.overshootStr
+	local ovDir = (targetLook - cam.CFrame.LookVector)
+	if ovDir.Magnitude < .001 then return end
+	local ovAmount = ovDir.Unit * ovStr * (.7 + rng() * .6)
+	_ovState.phase = 1
+	_ovState.timer = 0
+	_ovState.ovPos = targetLook + ovAmount
+end
+
+local function tickOvershoot(dt, targetLook)
+	if _ovState.phase == 0 then return targetLook end
+	_ovState.timer += dt
+	if _ovState.phase == 1 then
+		local dur = .06 + rng() * .04
+		if _ovState.timer >= dur then
+			_ovState.phase = 2; _ovState.timer = 0
+			return _ovState.ovPos
+		end
+		local t = sstep(_ovState.timer / dur)
+		return lerp(cam.CFrame.LookVector, _ovState.ovPos, t)
+	elseif _ovState.phase == 2 then
+		local dur = .08 + rng() * .06
+		if _ovState.timer >= dur then
+			_ovState.phase = 0; return targetLook
+		end
+		local t = eoc(_ovState.timer / dur)
+		return lerp(_ovState.ovPos, targetLook, t)
+	end
+	return targetLook
+end
+
+local function initFlick(fromLook, toLook)
+	local angle = acos(clamp(fromLook:Dot(toLook), -1, 1))
+	if angle < rad(Cfg.aim.flickThresh) then return false end
+	_flickState.active = true; _flickState.t = 0
+	_flickState.startLook = fromLook; _flickState.endLook = toLook
+	_flickState.dur = clamp(angle / rad(180) * .15 + .03, .03, .18)
+	return true
+end
+
+local function tickFlick(dt)
+	if not _flickState.active then return nil end
+	_flickState.t += dt
+	if _flickState.t >= _flickState.dur then
+		_flickState.active = false
+		return _flickState.endLook
+	end
+	local t = _flickState.t / _flickState.dur
+	local curve = 1 - (1-t)*(1-t)*(1-t)
+	local mid = (_flickState.startLook + _flickState.endLook).Unit
+	local ctrl = (mid + v3((rng()-.5)*.02, (rng()-.5)*.01, 0)).Unit
+	return quadBezier(_flickState.startLook, ctrl, _flickState.endLook, curve).Unit
+end
+
+local function applyCone(look)
+	if not Cfg.aim.aimCone or Cfg.aim.coneDeg <= 0 then return look end
+	local coneRad = rad(Cfg.aim.coneDeg)
+	local angle = (rng()-.5) * 2 * coneRad
+	local rot = rng() * pi * 2
+	local right = look:Cross(upv3)
+	if right.Magnitude < .001 then right = look:Cross(v3(1,0,0)) end
+	right = right.Unit
+	local up2 = right:Cross(look).Unit
+	local deflect = (right * cos(rot) + up2 * sin(rot)) * sin(angle)
+	return (look + deflect).Unit
+end
+
+local function processReaction(tgt)
+	if not Cfg.aim.reactionSim then _rxnReady = true; _rxnQueue = nil; return end
+	if _rxnQueue and _rxnQueue.tgt == tgt then
+		if tk() >= _rxnQueue.readyAt then _rxnReady = true; _rxnQueue = nil end
+		return
+	end
+	local baseMs = Cfg.aim.reactionMs
+	local jitter = (rng() - .5) * baseMs * .4
+	local delay = (baseMs + jitter) / 1000
+	_rxnQueue = {tgt=tgt, readyAt=tk()+delay}
+	_rxnReady = false
+end
+
+local function tickTrigger(dt, tgt)
+	if not Cfg.aim.triggerbot or not _aimLck or not tgt then _trigState.armed = false; return end
+	local chr = tgt.Character; if not validChr(chr) then return end
+	local head = getHead(chr); if not head then return end
+	local sp, onS = cam:WorldToViewportPoint(head.Position)
+	if not onS then _trigState.armed = false; return end
+	local ctr = scrn(); local d = (ctr - v2(sp.X,sp.Y)).Magnitude
+	local threshold = 8 + (plrDist(tgt) / 100) * 3
+	if d <= threshold then
+		if not _trigState.armed then
+			_trigState.armed = true
+			_trigState.timer = Cfg.aim.triggerDelay / 1000 + (rng()-.5)*.02
+		end
+		_trigState.timer -= dt
+		if _trigState.timer <= 0 then
+			pcall(function() mouse1click() end)
+			_trigState.timer = Cfg.aim.triggerBurst and (.04 + rng()*.03) or (Cfg.aim.triggerDelay / 1000 + rng()*.02)
+			_trigState.burstN += 1
+			if Cfg.aim.triggerBurst and _trigState.burstN >= (2 + rng(0,2)) then
+				_trigState.armed = false; _trigState.burstN = 0
+			end
+		end
+	else
+		_trigState.armed = false; _trigState.burstN = 0
+	end
+end
+
+local function aimAt(tgt, dt)
+	if not tgt or not validPlr(tgt) or not validChr(tgt.Character) then return end
+	local hum = getHum(tgt.Character); if not hum or hum.Health <= 0 then return end
+
+	processReaction(tgt)
+	if not _rxnReady then updOrb(nil); return end
+
+	recordPos(tgt.Character)
+
+	local ap
+	if Cfg.aim.distAdapt then ap = distAdaptPart(tgt.Character) end
+	if not ap then ap = getAimPart(tgt.Character) end
+	if not ap then return end
+
+	if Cfg.aim.multiPoint and Cfg.aim.visChk then
+		local visPart = bestVisiblePart(tgt.Character)
+		if visPart then ap = visPart end
+	end
+
+	local rawPos = resolvePos(tgt.Character, ap)
+	local vel = getSmoothedVel(tgt.Character)
+	local accel = getAccel(tgt.Character)
+
+	local offset = v3(Cfg.misc.offX, Cfg.misc.offY, Cfg.misc.offZ)
+	if Cfg.misc.autoAdj then
+		local r = getRoot(tgt.Character)
+		local pd = r and (r.Position - cam.CFrame.Position).Magnitude or 100
+		if Cfg.misc.aaMode == "Proximity" then offset = offset * clamp(1-(pd/200),.1,2)
+		else offset = offset * clamp(pd/200,.5,3) end
+	end
+
+	local hSt = hum:GetState()
+	if hSt == Enum.HumanoidStateType.Jumping or hSt == Enum.HumanoidStateType.Freefall then
+		offset = offset + v3(0, Cfg.misc.jumpOff, 0)
+	end
+
+	if Cfg.misc.shake then
+		local si = Cfg.misc.shakeStr * .1
+		_bnX = brownNoise(_bnX, 15, si, dt)
+		_bnY = brownNoise(_bnY, 12, si, dt)
+		_bnZ = brownNoise(_bnZ, 8, si * .4, dt)
+		offset = offset + v3(_bnX, _bnY, _bnZ)
+	end
+
+	local finalPos = predictPos(rawPos + offset, vel, accel, tgt.Character)
+
+	if Cfg.aim.humanize then
+		local hs = Cfg.aim.humanStr * .12
+		local micro = v3(
+			pnoise(42.7, 14, hs) + pnoise(91.2, 31, hs * .3),
+			pnoise(87.3, 13, hs) + pnoise(23.8, 29, hs * .3),
+			pnoise(63.1, 11, hs * .4)
+		)
+		local engageT = clamp((tk() - _lockTime) / 2, 0, 1)
+		micro = micro * lerp(1.5, .6, engageT)
+		finalPos = finalPos + micro
+	end
+
+	if Cfg.aim.aimCone then
+		local dir = (finalPos - cam.CFrame.Position)
+		if dir.Magnitude > .01 then
+			local look = applyCone(dir.Unit)
+			finalPos = cam.CFrame.Position + look * dir.Magnitude
+		end
+	end
+
+	updOrb(finalPos)
+
+	local newLook = (finalPos - cam.CFrame.Position)
+	if newLook.Magnitude < .001 then return end
+	newLook = newLook.Unit
+	local curLook = cam.CFrame.LookVector
+
+	local angleDelta = acos(clamp(curLook:Dot(newLook), -1, 1))
+
+	local sf
+	if Cfg.aim.smooth == 0 then sf = 1
+	elseif Cfg.aim.adaptSmooth then
+		local baseSf = clamp(1-(Cfg.aim.smooth/11),.05,1)
+		local angFactor = clamp(angleDelta / rad(20), .2, 3)
+		local distFactor = clamp(_engageDist / 200, .5, 1.5)
+		local velFactor = vel.Magnitude > 15 and 1.3 or 1
+		sf = clamp(baseSf * angFactor * distFactor * velFactor, .03, 1)
+	else sf = clamp(1-(Cfg.aim.smooth/11),.05,1) end
+
+	if Cfg.aim.flick and _flickState.active then
+		local flickLook = tickFlick(dt)
+		if flickLook then
+			cam.CFrame = cf(cam.CFrame.Position, cam.CFrame.Position + flickLook)
+			return
+		end
+	end
+
+	if Cfg.aim.flick and angleDelta > rad(Cfg.aim.flickThresh) and not _flickState.active then
+		if initFlick(curLook, newLook) then
+			initOvershoot(newLook)
+			return
+		end
+	end
+
+	local blendLook
+
+	if Cfg.aim.overshoot and _ovState.phase > 0 then
+		blendLook = tickOvershoot(dt, newLook)
+	elseif Cfg.aim.bezier and sf < .9 then
+		if _bzT >= .98 or (_bzTo - newLook).Magnitude > .15 then
+			initBezierPath(curLook, newLook)
+		end
+		blendLook = tickBezier(dt, sf)
+		if blendLook.Magnitude < .001 then blendLook = newLook end
+		blendLook = blendLook.Unit
+	elseif Cfg.aim.humanize and sf < .95 then
+		_aimTrail.t = clamp(_aimTrail.t + dt * sf * 60, 0, 1)
+		blendLook = cubicHermite(curLook, _aimTrail.tangent*.5, newLook, zv3, sstep(_aimTrail.t))
+		if blendLook.Magnitude < .001 then blendLook = newLook end
+		blendLook = blendLook.Unit
+		if _aimTrail.t >= .95 then _aimTrail.from=finalPos; _aimTrail.tangent=newLook; _aimTrail.t=0 end
+	else
+		local tgtCF = cf(cam.CFrame.Position, finalPos)
+		if Cfg.aim.mouseMethod and mousemoverel then
+			local sp, onS = cam:WorldToViewportPoint(finalPos)
+			if onS then
+				local ctr = scrn()
+				local dx = (sp.X - ctr.X) * sf
+				local dy = (sp.Y - ctr.Y) * sf
+				pcall(mousemoverel, dx, dy)
+			end
+			return
+		end
+		cam.CFrame = cam.CFrame:Lerp(tgtCF, sf)
+		return
+	end
+
+	if Cfg.aim.mouseMethod and mousemoverel then
+		local projPt = cam.CFrame.Position + blendLook * 100
+		local sp, onS = cam:WorldToViewportPoint(projPt)
+		if onS then
+			local ctr = scrn()
+			pcall(mousemoverel, sp.X - ctr.X, sp.Y - ctr.Y)
+		end
+	else
+		cam.CFrame = cf(cam.CFrame.Position, cam.CFrame.Position + blendLook)
+	end
+end
+
+local function resetAim()
+	_aimOn=false; _aimLck=false; _aimTgt=nil; _stkTgt=nil; _stkGrace=0
+	_aimTrail={from=zv3,tangent=zv3,t=0}
+	_bzT=1; _ovState.phase=0; _flickState.active=false
+	_rxnQueue=nil; _rxnReady=true
+	_trigState.armed=false; _trigState.burstN=0
+	_bnX=0; _bnY=0; _bnZ=0
+	_persistScore = {}
+	updOrb(nil); updHL()
+	pcall(function() cam.CameraType = Enum.CameraType.Custom end)
+end
+
+local _xhLn = {}
+local _xhDt
+
+local function tickXhair()
+	if not Cfg.misc.xhair then
+		for _, ln in pairs(_xhLn) do if ln then ln.Visible=false end end
+		if _xhDt then _xhDt.Visible=false end; return
+	end
+	local ctr = scrn()
+	local sz, gap, thk, col = Cfg.misc.xhSz, Cfg.misc.xhGap, Cfg.misc.xhThk, Cfg.misc.xhCol
+	if Cfg.misc.xhDyn and _aimOn and _aimLck then sz=mx(2,sz*.4); gap=mx(1,gap*.4) end
+	for i=1,4 do if not _xhLn[i] then _xhLn[i]=mkLine({ZIndex=9990}) end end
+	local l,r,u,d = _xhLn[1],_xhLn[2],_xhLn[3],_xhLn[4]
+	l.From=v2(ctr.X-sz-gap,ctr.Y); l.To=v2(ctr.X-gap,ctr.Y)
+	r.From=v2(ctr.X+gap,ctr.Y); r.To=v2(ctr.X+sz+gap,ctr.Y)
+	u.From=v2(ctr.X,ctr.Y-sz-gap); u.To=v2(ctr.X,ctr.Y-gap)
+	d.From=v2(ctr.X,ctr.Y+gap); d.To=v2(ctr.X,ctr.Y+sz+gap)
+	for _, ln in ipairs({l,r,u,d}) do ln.Color=col; ln.Thickness=thk; ln.Transparency=1; ln.Visible=true end
+	if Cfg.misc.xhDot then
+		if not _xhDt then _xhDt=mkCirc({Radius=2,Filled=true,NumSides=16,ZIndex=9991}) end
+		_xhDt.Position=ctr; _xhDt.Color=col; _xhDt.Transparency=1; _xhDt.Visible=true
+	else if _xhDt then _xhDt.Visible=false end end
+end
+
+local _origSky,_origAmb,_origOutd,_origFogC,_origFogE,_origFogS,_origBri,_origGS
+local _rmTex = {}
+local _afkCn
+
+local function saveLtg() pcall(function()
+	_origAmb=ltg.Ambient; _origOutd=ltg.OutdoorAmbient; _origFogC=ltg.FogColor
+	_origFogE=ltg.FogEnd; _origFogS=ltg.FogStart; _origBri=ltg.Brightness; _origGS=ltg.GlobalShadows
+end) end
+saveLtg()
+
+local function setGraySky(on)
+	if on then
+		local sky = ltg:FindFirstChildOfClass("Sky"); if sky then _origSky=sky; sky.Parent=nil end
+		pcall(function() ltg.Ambient=c3(128,128,128); ltg.OutdoorAmbient=c3(128,128,128); ltg.FogColor=c3(128,128,128); ltg.FogEnd=9e9 end)
+	else
+		if _origSky then pcall(function() _origSky.Parent=ltg end); _origSky=nil end
+		pcall(function() if _origAmb then ltg.Ambient=_origAmb end; if _origOutd then ltg.OutdoorAmbient=_origOutd end; if _origFogC then ltg.FogColor=_origFogC end; if _origFogE then ltg.FogEnd=_origFogE end end)
+	end
+end
+
+local function setFB(on)
+	if on then pcall(function() ltg.Ambient=Color3.new(1,1,1); ltg.OutdoorAmbient=Color3.new(1,1,1); ltg.Brightness=2; ltg.GlobalShadows=false end)
+	else pcall(function() if _origAmb then ltg.Ambient=_origAmb end; if _origOutd then ltg.OutdoorAmbient=_origOutd end; if _origBri then ltg.Brightness=_origBri end; if _origGS~=nil then ltg.GlobalShadows=_origGS end end) end
+end
+
+local function setNoFog(on)
+	if on then pcall(function() ltg.FogStart=0; ltg.FogEnd=1e10 end)
+	else pcall(function() if _origFogS then ltg.FogStart=_origFogS end; if _origFogE then ltg.FogEnd=_origFogE end end) end
+end
+
+local function setFmg(on)
+	if on then
+		for _,x in ipairs(ltg:GetChildren()) do if x:IsA("PostEffect") then pcall(function() x.Enabled=false end) end end
+		pcall(function() ltg.GlobalShadows=false; ltg.FogEnd=1e10; ltg.Brightness=1; settings().Rendering.QualityLevel=Enum.QualityLevel.Level01 end)
+	else
+		for _,x in ipairs(ltg:GetChildren()) do if x:IsA("PostEffect") then pcall(function() x.Enabled=true end) end end
+		pcall(function() if _origGS~=nil then ltg.GlobalShadows=_origGS end; if _origFogE then ltg.FogEnd=_origFogE end; if _origBri then ltg.Brightness=_origBri end; settings().Rendering.QualityLevel=Enum.QualityLevel.Automatic end)
+	end
+end
+
+local function setRmTex(on)
+	if on then
+		for _,obj in ipairs(ws:GetDescendants()) do pcall(function()
+			if obj:IsA("Texture") or obj:IsA("Decal") then _rmTex[#_rmTex+1]={o=obj,p=obj.Parent}; obj.Parent=nil end
+		end) end; pushNf(sfmt("Stripped %d textures",#_rmTex),2,"info")
+	else local ct=0; for _,d in ipairs(_rmTex) do pcall(function() if d.o and d.p then d.o.Parent=d.p; ct+=1 end end) end; _rmTex={}; pushNf(sfmt("Restored %d textures",ct),2,"info") end
+end
+
+local function setAntiAfk(on)
+	if on then
+		if _afkCn then pcall(function() _afkCn:Disconnect() end) end
+		pcall(function() local vu=game:GetService("VirtualUser"); _afkCn=lp.Idled:Connect(function() pcall(function() vu:CaptureController(); vu:ClickButton2(v2(0,0)) end) end) end)
+	else if _afkCn then pcall(function() _afkCn:Disconnect() end); _afkCn=nil end end
+end
+
+local _tgtPnl = {
+	bg=mkRect({Filled=true,Color=c3(12,12,18),ZIndex=9970}),
+	acc=mkRect({Filled=true,Color=c3(80,90,230),ZIndex=9971}),
+	nm=mkText({Size=13,ZIndex=9972,Font=Drawing.Fonts.Plex}),
+	hp=mkText({Size=11,ZIndex=9972,Font=Drawing.Fonts.Plex}),
+	dst=mkText({Size=11,ZIndex=9972,Font=Drawing.Fonts.Plex}),
+	wpn=mkText({Size=11,ZIndex=9972,Font=Drawing.Fonts.Plex}),
+	hpBar=mkRect({Filled=true,ZIndex=9972}),
+	hpBg=mkRect({Filled=true,Color=c3(40,40,45),ZIndex=9971}),
+}
+local _tgtPnlOn = true
+
+local function hideTgtPnl() for _,d in pairs(_tgtPnl) do if d and d.Visible~=nil then d.Visible=false end end end
+
+local function tickTgtPnl()
+	if not _tgtPnlOn or not _aimOn or not _aimLck or not _aimTgt then hideTgtPnl(); return end
+	local p = _aimTgt
+	if not validPlr(p) or not validChr(p.Character) then hideTgtPnl(); return end
+	local chr=p.Character; local hum=getHum(chr); local root=getRoot(chr)
+	if not hum or not root then hideTgtPnl(); return end
+	local pad=8; local pW,pH=180,72; local pX=10; local pY=vps().Y-pH-40
+	if _tgtPnl.bg then _tgtPnl.bg.Size=v2(pW,pH); _tgtPnl.bg.Position=v2(pX,pY); _tgtPnl.bg.Transparency=.88; _tgtPnl.bg.Visible=true end
+	if _tgtPnl.acc then _tgtPnl.acc.Size=v2(pW,2); _tgtPnl.acc.Position=v2(pX,pY); _tgtPnl.acc.Color=c3(255,60,60); _tgtPnl.acc.Transparency=1; _tgtPnl.acc.Visible=true end
+	local tx,ty=pX+pad,pY+6
+	if _tgtPnl.nm then _tgtPnl.nm.Text=p.DisplayName.." (@"..p.Name..")"; _tgtPnl.nm.Position=v2(tx,ty); _tgtPnl.nm.Color=c3(255,80,80); _tgtPnl.nm.Transparency=1; _tgtPnl.nm.Visible=true; ty+=16 end
+	local mxh=mx(hum.MaxHealth,1); local pct=clamp(hum.Health/mxh,0,1); local hc=hpcol(pct)
+	if _tgtPnl.hp then _tgtPnl.hp.Text=sfmt("HP: %d/%d (%.0f%%)",floor(hum.Health),floor(hum.MaxHealth),pct*100); _tgtPnl.hp.Position=v2(tx,ty); _tgtPnl.hp.Color=hc; _tgtPnl.hp.Transparency=1; _tgtPnl.hp.Visible=true; ty+=14 end
+	local bry=ty+1; local brw=pW-pad*2; local brh=4
+	if _tgtPnl.hpBg then _tgtPnl.hpBg.Size=v2(brw,brh); _tgtPnl.hpBg.Position=v2(tx,bry); _tgtPnl.hpBg.Transparency=.7; _tgtPnl.hpBg.Visible=true end
+	if _tgtPnl.hpBar then _tgtPnl.hpBar.Size=v2(mx(1,brw*pct),brh); _tgtPnl.hpBar.Position=v2(tx,bry); _tgtPnl.hpBar.Color=hc; _tgtPnl.hpBar.Transparency=1; _tgtPnl.hpBar.Visible=true end
+	ty=bry+brh+3
+	local dd=(root.Position-cam.CFrame.Position).Magnitude
+	if _tgtPnl.dst then _tgtPnl.dst.Text=sfmt("Dist: %dm",floor(dd)); _tgtPnl.dst.Position=v2(tx,ty); _tgtPnl.dst.Color=c3(180,180,200); _tgtPnl.dst.Transparency=1; _tgtPnl.dst.Visible=true end
+	local wpn=getWpn(chr)
+	if _tgtPnl.wpn then
+		if wpn then _tgtPnl.wpn.Text="Wpn: "..wpn; _tgtPnl.wpn.Position=v2(tx+90,ty); _tgtPnl.wpn.Color=c3(220,180,60); _tgtPnl.wpn.Transparency=1; _tgtPnl.wpn.Visible=true
+		else _tgtPnl.wpn.Visible=false end
+	end
+end
+
+local function onJoin(p)
+	if p == lp then return end
+	hook(p.CharacterAdded:Connect(function()
+		task.defer(function()
+			task.wait(.15+rng()*.1)
+			if validPlr(p) and validChr(p.Character) and Cfg.esp.on then MkEsp(p) end
+		end)
+	end))
+	hook(p.CharacterRemoving:Connect(function()
+		_vbufs[p.Character]=nil; _accelBuf[p.Character]=nil; _prevVel[p.Character]=nil; _posHist[p.Character]=nil
+	end))
+	if p.Character and Cfg.esp.on then MkEsp(p) end
+end
+
+for _, p in ipairs(plrs:GetPlayers()) do onJoin(p) end
+hook(plrs.PlayerAdded:Connect(onJoin))
+hook(plrs.PlayerRemoving:Connect(function(p)
+	pcall(RemEsp, p)
+	if p.Character then _vbufs[p.Character]=nil; _accelBuf[p.Character]=nil; _prevVel[p.Character]=nil; _posHist[p.Character]=nil end
+	_persistScore[p] = nil
+end))
+hook(ws:GetPropertyChangedSignal("CurrentCamera"):Connect(function() cam = ws.CurrentCamera end))
+
+local GmmUI = loadstring(game:HttpGet(
+	"https://raw.githubusercontent.com/MermiXO/GMM-Ui-Lib/refs/heads/main/src.lua?t="..tk()
+))()
+
+local ui = GmmUI.new({Title="REP+ v3",Accent=c3(80,90,230),Select=c3(80,90,230),Scroller=c3(80,90,230)})
+local mH = ui:NewMenu("HOME")
+local mA = ui:NewMenu("AIMBOT")
+local mM = ui:NewMenu("MISC")
+local mE = ui:NewMenu("ESP")
+local mX = ui:NewMenu("EXTRA")
+
+mH:Submenu("Aimbot","Aimbot configuration and settings.",mA)
+mH:Submenu("Misc","Offsets, crosshair, misc features.",mM)
+mH:Submenu("ESP","Turper's ESP with enhancements.",mE)
+mH:Submenu("Extra","3D Preview, visuals, graphics.",mX)
+
+mA:Toggle("Enable","Toggle aimbot on/off.",Cfg.aim.on,function(v) Cfg.aim.on=v; if not v then resetAim() end; pushNf(v and "Aimbot ON" or "Aimbot OFF",2,v and "success" or "warning"); playNav() end)
+mA:Toggle("Team Check","Skip teammates.",Cfg.aim.teamChk,function(v) Cfg.aim.teamChk=v; playNav() end)
+mA:Toggle("Visible Check","Only visible targets.",Cfg.aim.visChk,function(v) Cfg.aim.visChk=v; playNav() end)
+mA:Toggle("Show FOV","Display FOV circle.",Cfg.aim.showFov,function(v) Cfg.aim.showFov=v; playNav() end)
+mA:Toggle("Prediction Vis","Show predicted position orb.",Cfg.aim.predVis,function(v) Cfg.aim.predVis=v; if not v and _predOrb then pcall(function() _predOrb.Transparency=1 end) end; playNav() end)
+mA:Toggle("Distance Check","Limit to ESP range.",Cfg.aim.distChk,function(v) Cfg.aim.distChk=v; playNav() end)
+mA:Toggle("Highlight Target","Glow on locked target.",Cfg.aim.hlTgt,function(v) Cfg.aim.hlTgt=v; if not v and _tgtHL then _tgtHL.Enabled=false end; playNav() end)
+mA:Toggle("Sticky Aim","Maintain lock on same target.",Cfg.aim.sticky,function(v) Cfg.aim.sticky=v; playNav() end)
+
+local _apOpts = {"Head","UpperTorso","LowerTorso","Closest","Smart"}
+local _apI = 1; for i,x in ipairs(_apOpts) do if x==Cfg.aim.part then _apI=i; break end end
+mA:List("Aim Part","Target body part.",_apOpts,_apI,function(v) Cfg.aim.part=v; pushNf("Part: "..v,2,"info"); playNav() end)
+
+local _pmOpts = {"Ping","Advanced"}
+local _pmI = Cfg.aim.predMode=="Advanced" and 2 or 1
+mA:List("Prediction","Prediction algorithm.",_pmOpts,_pmI,function(v) Cfg.aim.predMode=v; playNav() end)
+
+local _prOpts = {"Crosshair","Distance","Health","Smart"}
+local _prI = 1; for i,x in ipairs(_prOpts) do if x==Cfg.aim.priority then _prI=i; break end end
+mA:List("Priority","Target selection method.",_prOpts,_prI,function(v) Cfg.aim.priority=v; pushNf("Priority: "..v,2,"info"); playNav() end)
+
+mA:Slider("FOV Radius","Targeting radius px.",10,600,5,Cfg.aim.fov,function(v) Cfg.aim.fov=v end)
+mA:Toggle("Dynamic FOV","Shrink FOV when locked.",Cfg.aim.dynFov,function(v) Cfg.aim.dynFov=v; playNav() end)
+mA:Slider("Dynamic FOV Min","Min FOV shrunk.",10,200,5,Cfg.aim.dynFovMin,function(v) Cfg.aim.dynFovMin=v end)
+mA:Slider("Smoothness","0=snap, 10=smooth.",0,10,1,Cfg.aim.smooth,function(v) Cfg.aim.smooth=v end)
+mA:Slider("Vel Samples","Velocity smoothing frames.",1,15,1,Cfg.aim.velFrames,function(v) Cfg.aim.velFrames=v end)
+
+mA:Toggle("Humanize","Micro-correction + spline path.",Cfg.aim.humanize,function(v) Cfg.aim.humanize=v; playNav() end)
+mA:Slider("Humanize Str","Micro-jitter amplitude.",0,100,1,Cfg.aim.humanStr*100,function(v) Cfg.aim.humanStr=v/100 end)
+mA:Toggle("Accel Predict","Factor target acceleration.",Cfg.aim.accelPred,function(v) Cfg.aim.accelPred=v; playNav() end)
+mA:Toggle("Adapt Smooth","Angle-based dynamic smoothing.",Cfg.aim.adaptSmooth,function(v) Cfg.aim.adaptSmooth=v; playNav() end)
+mA:Toggle("Resolver","Strafe-compensated offset.",Cfg.aim.resolver,function(v) Cfg.aim.resolver=v; playNav() end)
+mA:Toggle("Bezier Path","Curved aim path with jitter.",Cfg.aim.bezier,function(v) Cfg.aim.bezier=v; playNav() end)
+mA:Slider("Bezier Jitter","Control point randomness.",0,100,1,Cfg.aim.bezierJitter*100,function(v) Cfg.aim.bezierJitter=v/100 end)
+mA:Toggle("Overshoot","Simulate human overshoot.",Cfg.aim.overshoot,function(v) Cfg.aim.overshoot=v; playNav() end)
+mA:Slider("Overshoot Str","How far past target.",0,100,1,Cfg.aim.overshootStr*100,function(v) Cfg.aim.overshootStr=v/100 end)
+mA:Toggle("Reaction Sim","Artificial lock-on delay.",Cfg.aim.reactionSim,function(v) Cfg.aim.reactionSim=v; playNav() end)
+mA:Slider("Reaction Ms","Simulated reaction time.",50,400,10,Cfg.aim.reactionMs,function(v) Cfg.aim.reactionMs=v end)
+mA:Toggle("Flick Sim","Natural flick on big angles.",Cfg.aim.flick,function(v) Cfg.aim.flick=v; playNav() end)
+mA:Slider("Flick Thresh","Min degrees to trigger flick.",5,90,5,Cfg.aim.flickThresh,function(v) Cfg.aim.flickThresh=v end)
+mA:Toggle("Triggerbot","Auto-fire when on target.",Cfg.aim.triggerbot,function(v) Cfg.aim.triggerbot=v; pushNf(v and "Trigger ON" or "Trigger OFF",2,v and "warning" or "info"); playNav() end)
+mA:Slider("Trigger Delay","Fire delay ms.",0,200,5,Cfg.aim.triggerDelay,function(v) Cfg.aim.triggerDelay=v end)
+mA:Toggle("Trigger Burst","Fire in short bursts.",Cfg.aim.triggerBurst,function(v) Cfg.aim.triggerBurst=v; playNav() end)
+mA:Toggle("Backtrack","Aim at delayed position.",Cfg.aim.backtrack,function(v) Cfg.aim.backtrack=v; playNav() end)
+mA:Slider("Backtrack Ms","Delay window ms.",20,200,10,Cfg.aim.backtrackMs,function(v) Cfg.aim.backtrackMs=v end)
+mA:Toggle("Aim Cone","Deliberate slight inaccuracy.",Cfg.aim.aimCone,function(v) Cfg.aim.aimCone=v; playNav() end)
+mA:Slider("Cone Degrees","Max deviation angle.",0,300,5,Cfg.aim.coneDeg*100,function(v) Cfg.aim.coneDeg=v/100 end)
+mA:Toggle("Dist Adapt","Auto aim-part by range.",Cfg.aim.distAdapt,function(v) Cfg.aim.distAdapt=v; playNav() end)
+mA:Toggle("Multi-Point","Pick most visible part.",Cfg.aim.multiPoint,function(v) Cfg.aim.multiPoint=v; playNav() end)
+mA:Toggle("Mouse Delta","Use mousemoverel injection.",Cfg.aim.mouseMethod,function(v) Cfg.aim.mouseMethod=v; playNav() end)
+mA:Slider("Switch CD","Target switch cooldown ms.",0,500,25,Cfg.aim.switchCooldown*1000,function(v) Cfg.aim.switchCooldown=v/1000 end)
+mA:Slider("Deadzone","Ignore vel below (s/s).",0,50,1,Cfg.aim.deadzone*10,function(v) Cfg.aim.deadzone=v/10 end)
+mA:Slider("Grace Period","Sticky re-acquire ms.",0,1000,50,Cfg.aim.gracePeriod*1000,function(v) Cfg.aim.gracePeriod=v/1000 end)
+
+mM:Toggle("Shake","Brownian noise on aim point.",Cfg.misc.shake,function(v) Cfg.misc.shake=v; playNav() end)
+mM:Slider("Shake Intensity","Shake strength.",0,50,1,Cfg.misc.shakeStr,function(v) Cfg.misc.shakeStr=v end)
+mM:Toggle("Auto Adjust","Scale offsets by distance.",Cfg.misc.autoAdj,function(v) Cfg.misc.autoAdj=v; playNav() end)
+local _aaOpts = {"Distance","Proximity"}
+mM:List("AA Mode","Offset scaling method.",_aaOpts,Cfg.misc.aaMode=="Proximity" and 2 or 1,function(v) Cfg.misc.aaMode=v; playNav() end)
+mM:Slider("Offset X","Horizontal (x10).",-150,150,1,Cfg.misc.offX*10,function(v) Cfg.misc.offX=v/10 end)
+mM:Slider("Offset Y","Vertical (x10).",-150,150,1,Cfg.misc.offY*10,function(v) Cfg.misc.offY=v/10 end)
+mM:Slider("Offset Z","Depth (x10).",-150,150,1,Cfg.misc.offZ*10,function(v) Cfg.misc.offZ=v/10 end)
+mM:Slider("Jump Offset","Airborne Y (x10).",-50,150,1,Cfg.misc.jumpOff*10,function(v) Cfg.misc.jumpOff=v/10 end)
+mM:Toggle("Crosshair","Custom crosshair.",Cfg.misc.xhair,function(v) Cfg.misc.xhair=v; playNav() end)
+mM:Toggle("Dynamic XH","Shrink when locked.",Cfg.misc.xhDyn,function(v) Cfg.misc.xhDyn=v; playNav() end)
+mM:Toggle("XH Dot","Center dot.",Cfg.misc.xhDot,function(v) Cfg.misc.xhDot=v; playNav() end)
+mM:Slider("XH Size","Arm length px.",2,40,1,Cfg.misc.xhSz,function(v) Cfg.misc.xhSz=v end)
+mM:Slider("XH Gap","Center gap px.",0,20,1,Cfg.misc.xhGap,function(v) Cfg.misc.xhGap=v end)
+mM:Slider("XH Thick","Line thickness.",1,5,1,Cfg.misc.xhThk,function(v) Cfg.misc.xhThk=v end)
+
+mE:Toggle("Enable","Toggle ESP.",Cfg.esp.on,function(v)
+	Cfg.esp.on=v; pushNf(v and "ESP ON" or "ESP OFF",2,v and "success" or "warning"); playNav()
+	if v then for _,p in ipairs(plrs:GetPlayers()) do if p~=lp and not _ents[p] and validChr(p.Character) then MkEsp(p) end end
+	else for _,ent in pairs(_ents) do hideEnt(ent) end end
+end)
+mE:Toggle("Boxes","Bounding boxes.",Cfg.esp.boxes,function(v) Cfg.esp.boxes=v; playNav() end)
+mE:Toggle("Corner Box","Corner brackets.",Cfg.esp.corner,function(v) Cfg.esp.corner=v; pushNf(v and "Corner" or "Full",2,"info"); playNav() end)
+mE:Toggle("Names","Player names.",Cfg.esp.names,function(v) Cfg.esp.names=v; playNav() end)
+mE:Toggle("Distance","Distance text.",Cfg.esp.dist,function(v) Cfg.esp.dist=v; playNav() end)
+mE:Toggle("Health Bar","HP bar.",Cfg.esp.hbar,function(v) Cfg.esp.hbar=v; playNav() end)
+mE:Toggle("Health Text","Numeric HP.",Cfg.esp.htxt,function(v) Cfg.esp.htxt=v; playNav() end)
+mE:Toggle("Tracers","Screen-to-player lines.",Cfg.esp.tracers,function(v) Cfg.esp.tracers=v; playNav() end)
+local _toOpts={"Bottom","Center","Top"}
+local _toI=1; for i,x in ipairs(_toOpts) do if x==Cfg.esp.tracerOrigin then _toI=i; break end end
+mE:List("Tracer Origin","Start point.",_toOpts,_toI,function(v) Cfg.esp.tracerOrigin=v; playNav() end)
+mE:Toggle("Skeleton","Bone lines.",Cfg.esp.skel,function(v) Cfg.esp.skel=v; playNav() end)
+mE:Toggle("Weapon","Equipped weapon.",Cfg.esp.weapon,function(v) Cfg.esp.weapon=v; playNav() end)
+mE:Toggle("Flags","Status flags.",Cfg.esp.flags,function(v) Cfg.esp.flags=v; playNav() end)
+mE:Toggle("OOF Arrows","Off-screen arrows.",Cfg.esp.oofArrows,function(v) Cfg.esp.oofArrows=v; playNav() end)
+mE:Toggle("Chams","Wall highlights.",Cfg.esp.chams,function(v) Cfg.esp.chams=v; if not v then for p,ch in pairs(_chmPool) do kill(ch); _chmPool[p]=nil end end; playNav() end)
+mE:Toggle("Team Check","Hide teammates.",Cfg.esp.teamChk,function(v) Cfg.esp.teamChk=v; playNav() end)
+mE:Toggle("Show Team","Team color ESP.",Cfg.esp.showTeam,function(v) Cfg.esp.showTeam=v; playNav() end)
+mE:Toggle("Vis Check","Color by LOS.",Cfg.esp.visChk,function(v) Cfg.esp.visChk=v; playNav() end)
+mE:Toggle("Glow","Soft glow edges.",Cfg.esp.glow,function(v) Cfg.esp.glow=v; playNav() end)
+mE:Toggle("Interpolate","Smooth ESP jitter.",Cfg.esp.interpPos,function(v) Cfg.esp.interpPos=v; playNav() end)
+mE:Slider("Max Dist","Render range.",50,5000,50,Cfg.esp.range,function(v) Cfg.esp.range=v end)
+mE:Slider("Box Thick","Line thickness.",1,5,1,Cfg.esp.boxThk,function(v) Cfg.esp.boxThk=v end)
+mE:Slider("Glow Str","Glow thickness.",1,6,1,Cfg.esp.glowStr,function(v) Cfg.esp.glowStr=v end)
+
+mX:Toggle("3D Preview","Live viewport overlay.",false,function(v)
+	if v then spawnPvw() else killPvw() end; pushNf(v and "Preview ON" or "Preview OFF",2,v and "success" or "info"); playNav()
+end)
+mX:Toggle("Gray Sky","Flat gray sky.",Cfg.ext.graySky,function(v) Cfg.ext.graySky=v; setGraySky(v); playNav() end)
+mX:Toggle("Fullbright","Max ambient.",Cfg.ext.fullbright,function(v) Cfg.ext.fullbright=v; setFB(v); playNav() end)
+mX:Toggle("No Fog","Remove fog.",Cfg.ext.noFog,function(v) Cfg.ext.noFog=v; setNoFog(v); playNav() end)
+mX:Toggle("FMG","Force low GFX.",Cfg.ext.fmg,function(v) Cfg.ext.fmg=v; setFmg(v); playNav() end)
+mX:Toggle("Rm Textures","Strip decals.",Cfg.ext.rmTex,function(v) Cfg.ext.rmTex=v; setRmTex(v); playNav() end)
+mX:Toggle("Anti-AFK","Prevent idle kick.",Cfg.ext.antiAfk,function(v) Cfg.ext.antiAfk=v; setAntiAfk(v); playNav() end)
+
+ui:PushMenu(mH)
+
+hook(uis.InputBegan:Connect(function(inp, gp)
+	if gp then return end; local kc = inp.KeyCode
+	if kc==Enum.KeyCode.Up or kc==Enum.KeyCode.Down or kc==Enum.KeyCode.Left or kc==Enum.KeyCode.Right or kc==Enum.KeyCode.Return or kc==Enum.KeyCode.Backspace then playNav() end
+end))
+
+local _lastGC = 0
+
+hook(rs.RenderStepped:Connect(function(dt)
+	_fc += 1; tickFps(dt); purgeLos()
+
+	if _fc % 90 == 0 then
+		local now = tk()
+		if now - _lastGC > 2 then _lastGC = now
+			for chr in pairs(_vbufs) do if not validChr(chr) then _vbufs[chr]=nil end end
+			for chr in pairs(_prevVel) do if not validChr(chr) then _prevVel[chr]=nil end end
+			for chr in pairs(_accelBuf) do if not validChr(chr) then _accelBuf[chr]=nil end end
+			for chr in pairs(_posHist) do if not validChr(chr) then _posHist[chr]=nil end end
+			for p,ch in pairs(_chmPool) do if not validPlr(p) then kill(ch); _chmPool[p]=nil end end
+			for p in pairs(_persistScore) do if not validPlr(p) then _persistScore[p]=nil end end
+		end
+	end
+
+	tickNfs(dt); tickWm()
+	local ctr = scrn()
+
+	if fovRing then
+		fovRing.Position = ctr
+		if Cfg.aim.dynFov and _aimLck and _aimOn then
+			local dr = mx(Cfg.aim.dynFovMin, Cfg.aim.fov*.4)
+			fovRing.Radius=dr; fovRing.Color=c3(255,80,80); fovRing.Thickness=2
+		else fovRing.Radius=Cfg.aim.fov; fovRing.Color=c3(255,255,255); fovRing.Thickness=1 end
+		fovRing.Transparency=.7; fovRing.Visible=Cfg.aim.showFov and Cfg.aim.on
+	end
+	if fovFill then
+		fovFill.Position=ctr; fovFill.Radius=fovRing and fovRing.Radius or Cfg.aim.fov
+		fovFill.Color=fovRing and fovRing.Color or Color3.new(1,1,1)
+		fovFill.Transparency=.05; fovFill.Visible=Cfg.aim.showFov and Cfg.aim.on
+	end
+	if lockTx then
+		if _aimLck and _aimOn and _aimTgt then
+			local nm="?"; pcall(function() nm=_aimTgt.DisplayName end)
+			lockTx.Text="  LOCKED: "..nm; lockTx.Color=c3(255,80,80)
+			lockTx.Position=v2(ctr.X+(fovRing and fovRing.Radius or 200)+8, ctr.Y-7)
+			lockTx.Transparency=1; lockTx.Visible=true
+		else lockTx.Visible=false end
+	end
+
+	if Cfg.esp.on then
+		for p, ent in pairs(_ents) do local s=pcall(tickEnt, ent, dt); if not s then pcall(RemEsp, p) end end
+		if _fc % 30 == 0 then for _,p in ipairs(plrs:GetPlayers()) do
+			if p~=lp and not _ents[p] and validChr(p.Character) then pcall(MkEsp, p) end
+		end end
+	else for _,ent in pairs(_ents) do pcall(hideEnt, ent) end end
+
+	pcall(tickXhair)
+	if _pvwActive then pcall(tickPvw, dt) end
+	pcall(tickTgtPnl)
+
+	if Cfg.aim.on then
+		local mb2 = uis:IsMouseButtonPressed(Enum.UserInputType.MouseButton2)
+		if mb2 then
+			_aimOn = true
+
+			if _aimLck and _aimTgt then
+				_persistScore[_aimTgt] = (_persistScore[_aimTgt] or 0) + dt * 30
+			end
+
+			if _aimLck and _stkTgt and Cfg.aim.sticky then
+				if validPlr(_stkTgt) and validChr(_stkTgt.Character) then
+					local hm = getHum(_stkTgt.Character)
+					if hm and hm.Health > 0 then
+						_aimTgt=_stkTgt; _stkGrace=tk()
+						pcall(aimAt, _stkTgt, dt)
+					else
+						if Cfg.aim.gracePeriod > 0 and (tk()-_stkGrace) < Cfg.aim.gracePeriod then
+							local nb = selectTarget()
+							if nb and (tk()-_lastSwitch) >= Cfg.aim.switchCooldown then
+								_aimTgt=nb; _stkTgt=nb; _aimLck=true; _lastSwitch=tk(); _lockTime=tk()
+								_engageDist=plrDist(nb)
+								initBezierPath(cam.CFrame.LookVector, ((getAimPart(nb.Character) or getRoot(nb.Character)).Position - cam.CFrame.Position).Unit)
+								initOvershoot(((getAimPart(nb.Character) or getRoot(nb.Character)).Position - cam.CFrame.Position).Unit)
+								pcall(aimAt, nb, dt)
+							end
+						else _aimLck=false; _stkTgt=nil; _aimTgt=nil end
+					end
+				else
+					if Cfg.aim.gracePeriod > 0 and (tk()-_stkGrace) < Cfg.aim.gracePeriod then
+						local nb = selectTarget()
+						if nb and (tk()-_lastSwitch) >= Cfg.aim.switchCooldown then
+							_aimTgt=nb; _stkTgt=nb; _aimLck=true; _lastSwitch=tk(); _lockTime=tk()
+							_engageDist=plrDist(nb)
+							pcall(aimAt, nb, dt)
+						end
+					else _aimLck=false; _stkTgt=nil; _aimTgt=nil end
+				end
+			end
+
+			if not _aimLck then
+				if (tk()-_lastSwitch) >= Cfg.aim.switchCooldown then
+					local best = selectTarget()
+					if best then
+						_aimTgt=best; _stkTgt=best; _aimLck=true; _stkGrace=tk(); _lastSwitch=tk(); _lockTime=tk()
+						_engageDist=plrDist(best)
+						_aimTrail={from=cam.CFrame.LookVector,tangent=cam.CFrame.LookVector,t=0}
+						_bzT=1; _ovState.phase=0; _flickState.active=false
+						local aPart = getAimPart(best.Character) or getRoot(best.Character)
+						if aPart then
+							local toLook = (aPart.Position - cam.CFrame.Position).Unit
+							initBezierPath(cam.CFrame.LookVector, toLook)
+							initOvershoot(toLook)
+						end
+						pcall(aimAt, best, dt)
+					else _aimTgt=nil; _aimLck=false; updOrb(nil) end
+				end
+			end
+
+			pcall(updHL)
+			pcall(tickTrigger, dt, _aimTgt)
+		else
+			if _aimOn then resetAim() end
+		end
+	else
+		if _aimOn then resetAim() end
+	end
+end))
+
+_G.REPCleanup = function()
+	unhookAll()
+	for p in pairs(_ents) do pcall(RemEsp, p) end
+	_ents={}; _fades={}; _morphs={}; _interpBuf={}
+	for p,ch in pairs(_chmPool) do kill(ch) end; _chmPool={}
+	for _,ln in pairs(_xhLn) do nuke(ln) end; _xhLn={}; nuke(_xhDt); _xhDt=nil
+	nuke(fovRing); fovRing=nil; nuke(fovFill); fovFill=nil; nuke(lockTx); lockTx=nil
+	for _,d in pairs(_tgtPnl) do nuke(d) end
+	kill(_tgtHL); _tgtHL=nil; kill(_predOrb); _predOrb=nil; kill(_navSnd); _navSnd=nil
+	killPvw()
+	for _,d in pairs(_wm) do nuke(d) end
+	for _,n in ipairs(_nfs) do nuke(n.bg); nuke(n.tx); if n.acc then nuke(n.acc) end end; _nfs={}
+	for _,n in ipairs(_nfpool) do nuke(n.bg); nuke(n.tx); if n.acc then nuke(n.acc) end end; _nfpool={}
+	if Cfg.ext.graySky then setGraySky(false) end
+	if Cfg.ext.fullbright then setFB(false) end
+	if Cfg.ext.noFog then setNoFog(false) end
+	if Cfg.ext.fmg then setFmg(false) end
+	if Cfg.ext.rmTex then setRmTex(false) end
+	if Cfg.ext.antiAfk then setAntiAfk(false) end
+	pcall(function() cam.CameraType=Enum.CameraType.Custom end)
+	_los={}; _vbufs={}; _prevVel={}; _accelBuf={}; _posHist={}; _persistScore={}
+	if ui and ui.Destroy then pcall(ui.Destroy, ui) end
+end
